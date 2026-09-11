@@ -41,6 +41,82 @@ Item {
   // editor rows. Applied en-masse by Apply groups.
   property var draftGroups: ({})
 
+  // ---------- drag engine (custom hit-testing, no QML Drag/DropAreas)
+  property var _sectionColumns: ({})   // sectionName -> SectionColumn item
+  property var _cellsBySection: ({})   // sectionName -> [EntryCell, ...]
+  property var dragState: null         // {fromSection, fromIndex, id} | null
+  property string dragHoverSection: ""
+  property int dragHoverIndex: -2      // -1 append, -2 nothing
+
+  function registerSectionColumn(name, column) {
+    var next = JSON.parse(JSON.stringify(_sectionColumns))
+    next[name] = column
+    _sectionColumns = next
+  }
+
+  function unregisterSectionColumn(name) {
+    var next = ({})
+    for (var k in _sectionColumns) if (k !== name) next[k] = _sectionColumns[k]
+    _sectionColumns = next
+  }
+
+  property int _revision: 0
+
+  function registerCell(section, cell) {
+    var list = Util.isPlainObject(_cellsBySection) ? (_cellsBySection[section] || []) : []
+    if (list.indexOf(cell) !== -1) return
+    list.push(cell)
+    _cellsBySection[section] = list
+  }
+
+  function unregisterCell(section, cell) {
+    var list = _cellsBySection[section]
+    if (!Array.isArray(list)) return
+    var idx = list.indexOf(cell)
+    if (idx !== -1) list.splice(idx, 1)
+  }
+
+  function updateDragHover(scenePoint) {
+    if (!dragState) return
+    var hover = { section: "", index: -2 }
+    for (var name in _sectionColumns) {
+      var column = _sectionColumns[name]
+      if (!column) continue
+      var local = column.mapFromItem(null, scenePoint.x, scenePoint.y)
+      if (local.x < 0 || local.x > column.width || local.y < 0 || local.y > column.height) continue
+      hover = { section: name, index: -1 }
+      var cells = _cellsBySection[name]
+      if (Array.isArray(cells)) {
+        for (var i = 0; i < cells.length; i++) {
+          var cell = cells[i]
+          if (!cell) continue
+          var center = cell.mapToItem(null, cell.width / 2, cell.height / 2)
+          if (scenePoint.y < center.y) {
+            hover = { section: name, index: cell.entryIndex }
+            break
+          }
+        }
+      }
+      break
+    }
+    dragHoverSection = hover.section
+    dragHoverIndex = hover.index
+
+    try {
+      var rootPoint = root.mapFromItem(null, scenePoint.x, scenePoint.y)
+      dragGhost.ghostX = rootPoint.x
+      dragGhost.ghostY = rootPoint.y
+    } catch (e) { }
+  }
+
+  function finishDrag() {
+    if (dragState && dragHoverSection !== "")
+      moveEntry(dragState.fromSection, dragState.fromIndex, dragHoverSection, dragHoverIndex)
+    dragState = null
+    dragHoverSection = ""
+    dragHoverIndex = -2
+  }
+
   // Fresh read of shell.json through the plugin helper (synchronous through
   // the Process stdout collector), because an under-load FileView returns
   // empty text and a stale panel snapshot would clobber the whole bar tree.
@@ -265,6 +341,39 @@ Item {
     }
   }
 
+  // Floating drag ghost: shows the dragged widget's real name so the user
+  // always knows what is being moved.
+  Item {
+    id: dragGhost
+
+    visible: root.dragState !== null
+    z: 1000
+    width: Math.max(90, ghostLabel.implicitWidth + 20)
+    height: ghostLabel.implicitHeight + 12
+    property real ghostX: 0
+    property real ghostY: 0
+
+    x: ghostX - width / 2
+    y: ghostY - height / 2
+
+    Text {
+      id: ghostLabel
+
+      anchors.centerIn: parent
+      text: root.dragState ? root.dragState.id : ""
+      color: root.fgColor
+      font.family: root.fontFamily
+      font.pixelSize: Style.font.caption
+    }
+
+    BorderSurface {
+      anchors.fill: parent
+      color: root.cardColor
+      borderSpec: Border.surfaceSpec("menu", "border", root.borderColor, 1)
+      radius: Style.space(6)
+    }
+  }
+
   PanelWindow {
     id: overlay
 
@@ -345,20 +454,13 @@ Item {
               font.pixelSize: Style.font.body
             }
 
-            Row {
+            NumberStepper {
               visible: root.floatingOn
-              spacing: Style.spacing.sm
+              stepperValue: root.floatingGap
+              minimum: 0
+              maximum: 64
               anchors.verticalCenter: parent.verticalCenter
-
-              Button { text: "-"; onClicked: root.setGap(root.floatingGap - 1) }
-              Text {
-                anchors.verticalCenter: parent.verticalCenter
-                text: "gap " + root.floatingGap + "px"
-                color: root.fgColor
-                font.family: root.fontFamily
-                font.pixelSize: Style.font.body
-              }
-              Button { text: "+"; onClicked: root.setGap(root.floatingGap + 1) }
+              onCommitted: function (value) { root.setGap(value) }
             }
           }
 
@@ -392,19 +494,12 @@ Item {
               font.pixelSize: Style.font.body
             }
 
-            Row {
-              spacing: Style.spacing.sm
+            NumberStepper {
+              stepperValue: root.cornerRadius
+              minimum: 0
+              maximum: 18
               anchors.verticalCenter: parent.verticalCenter
-
-              Button { text: "-"; onClicked: root.setRadius(root.cornerRadius - 1) }
-              Text {
-                anchors.verticalCenter: parent.verticalCenter
-                text: root.cornerRadius + "px"
-                color: root.fgColor
-                font.family: root.fontFamily
-                font.pixelSize: Style.font.body
-              }
-              Button { text: "+"; onClicked: root.setRadius(root.cornerRadius + 1) }
+              onCommitted: function (value) { root.setRadius(value) }
             }
           }
 
@@ -453,8 +548,9 @@ Item {
   // Numeric row: -/+ buttons plus a manually editable text field. The text
   // re-syncs with the committed value whenever the committed value object is
   // reassigned (every write swaps in a fresh clone).
-  // One bar layout section: header, horizontal drag drop zones, the entry
-  // rows, and a footer drop slot for appending.
+  // One bar layout section: header, entry cells, and a footer slot that is
+  // the append drop target. Hit-testing runs against the live column rects;
+  // no QML Drag/DropArea involvement.
   component SectionColumn: Column {
     id: pillSection
 
@@ -490,17 +586,18 @@ Item {
       }
     }
 
-    // Footer drop slot: append at the end of the section.
-    DropArea {
+    // Footer append slot highlight.
+    Item {
       width: parent.width
       height: Style.spacing.controlHeight
-      keys: ["dime-bar-entry"]
 
-      BorderSurface {
+      Rectangle {
         anchors.fill: parent
-        visible: parent.containsDrag
         color: "transparent"
-        borderSpec: Border.flat(root.fgColor, 1)
+        border.width: root.dragHoverSection === pillSection.sectionName
+          && root.dragHoverIndex === -1 ? 1 : 0
+        border.color: root.fgColor
+        opacity: 0.6
         radius: Style.space(4)
       }
 
@@ -508,16 +605,15 @@ Item {
         anchors.centerIn: parent
         text: "drop to append"
         color: root.fgColor
-        opacity: parent.containsDrag ? 0.9 : 0.3
+        opacity: root.dragHoverSection === pillSection.sectionName
+          && root.dragHoverIndex === -1 ? 0.9 : 0.3
         font.family: root.fontFamily
         font.pixelSize: Style.font.caption
       }
-
-      onDropped: function (drag) {
-        var payload = drag.source && drag.source.dragPayload ? drag.source.dragPayload : null
-        if (payload) root.moveEntry(payload.fromSection, payload.fromIndex, pillSection.sectionName, -1)
-      }
     }
+
+    Component.onCompleted: root.registerSectionColumn(sectionName, pillSection)
+    Component.onDestruction: root.unregisterSectionColumn(sectionName)
   }
 
   component EntryCell: Item {
@@ -528,30 +624,25 @@ Item {
     property string owningSection: ""
     readonly property var dragPayload: ({
       fromSection: owningSection,
-      fromIndex: entryIndex
+      fromIndex: entryIndex,
+      id: entryModel && entryModel.id ? entryModel.id : "?"
     })
     readonly property bool dragging: cellArea.drag.active
     readonly property bool hasGroup: !!entryModel && typeof entryModel.group === "string"
       && entryModel.group.length > 0
+    readonly property bool hovered: root.dragState !== null
+      && root.dragHoverSection === owningSection && root.dragHoverIndex === entryIndex
 
     width: parent ? parent.width : 150
     implicitHeight: cellCol.implicitHeight
     height: cellCol.implicitHeight
-
-    DropArea {
-      anchors { fill: parent; margins: -Style.spacing.xxs }
-      keys: ["dime-bar-entry"]
-      onDropped: function (drag) {
-        var payload = drag.source && drag.source.dragPayload ? drag.source.dragPayload : null
-        if (payload)
-          root.moveEntry(payload.fromSection, payload.fromIndex, entryCell.owningSection, entryCell.entryIndex)
-      }
-    }
+    opacity: dragging ? 0.45 : 1.0
 
     BorderSurface {
       anchors.fill: cellCol
-      color: root.fgColor
-      opacity: entryCell.dragging ? 0.12 : 0.0
+      color: "transparent"
+      borderSpec: Border.flat(root.fgColor, entryCell.hovered ? 2 : 0)
+      opacity: entryCell.hovered ? 0.9 : 0.0
       radius: Style.space(3)
     }
 
@@ -570,7 +661,7 @@ Item {
           width: Style.space(14)
           height: Style.space(14)
           radius: width / 2
-          color: entryCell.dragging ? Qt.rgba(0, 0, 0, 0.001) : "transparent"
+          color: entryCell.dragging ? Qt.rgba(0, 0, 0, 0.01) : "transparent"
           border.width: 1
           border.color: root.fgColor
           opacity: 0.4
@@ -585,11 +676,20 @@ Item {
             cursorShape: Qt.DragMoveCursor
             drag.target: entryCell
             drag.axis: Drag.XAndYAxis
-            onPressed: entryCell.Drag.start()
+            onPressed: {
+              entryCell.Drag.active = true
+              root.dragState = entryCell.dragPayload
+            }
+            onPositionChanged: function (mouse) {
+              if (!entryCell.dragging) return
+              var scene = mapToItem(null, mouse.x + width / 2, mouse.y + height / 2)
+              root.updateDragHover(scene)
+            }
             onReleased: {
               entryCell.x = 0
               entryCell.y = 0
-              entryCell.Drag.drop()
+              entryCell.Drag.active = false
+              root.finishDrag()
             }
           }
         }
@@ -650,11 +750,8 @@ Item {
       }
     }
 
-    // Strip the visual drag offset the moment the drop resolves (or not):
-    // the data model rebuild re-positions everything anyway.
-    Drag.active: entryCell.dragging
-    Drag.dragType: Drag.Automatic
-    Drag.keys: ["dime-bar-entry"]
+    Component.onCompleted: root.registerCell(owningSection, entryCell)
+    Component.onDestruction: root.unregisterCell(owningSection, entryCell)
   }
 
   component NumberStepper: Row {
