@@ -437,6 +437,8 @@ Item {
           }
 
           Item { width: 1; height: Style.spacing.sm }
+
+          Text {
             visible: root.status !== ""
             text: root.status
             color: root.fgColor
