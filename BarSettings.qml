@@ -135,6 +135,54 @@ Item {
     barTree.capsules.enabled = on
     return applyBarTree()
   }
+  readonly property bool backdropOn: barTree && Util.isPlainObject(barTree.capsules)
+    ? barTree.capsules.backdrop !== false : true
+
+  function setBackdrop(on) {
+    if (!barTree) return false
+    if (!Util.isPlainObject(barTree.capsules)) barTree.capsules = {}
+    barTree.capsules.backdrop = on
+    return applyBarTree()
+  }
+
+  function setCapsuleColor(group, hex) {
+    if (!barTree || String(group).length === 0) return false
+    if (!Util.isPlainObject(barTree.capsules)) barTree.capsules = {}
+    if (!Util.isPlainObject(barTree.capsules.styles)) barTree.capsules.styles = {}
+    hex = String(hex || "").trim()
+    var styles = barTree.capsules.styles
+    var style = Util.isPlainObject(styles[group]) ? styles[group] : {}
+    if (hex === "") delete style.color
+    else try { Qt.color(style.color = hex) } catch (e) { return false }
+    if (Object.keys(style).length > 0) styles[group] = style
+    else delete styles[group]
+    if (Object.keys(styles).length === 0) delete barTree.capsules.styles
+    return applyBarTree()
+  }
+
+  function committedCapsuleColor(group) {
+    var styles = barTree && Util.isPlainObject(barTree.capsules) && Util.isPlainObject(barTree.capsules.styles)
+      ? barTree.capsules.styles : null
+    var style = styles ? styles[group] : null
+    return style && typeof style.color === "string" ? style.color : ""
+  }
+
+  function setBarColorField(which, hex) {
+    if (!barTree) return false
+    hex = String(hex || "").trim()
+    if (hex !== "") { try { Qt.color(hex) } catch (e) { return false } }
+    if (!Util.isPlainObject(barTree.colors)) barTree.colors = {}
+    if (hex === "") delete barTree.colors[which]
+    else barTree.colors[which] = hex
+    if (Object.keys(barTree.colors).length === 0) delete barTree.colors
+    return applyBarTree()
+  }
+
+  function committedBarColorField(which) {
+    var colors = barTree && Util.isPlainObject(barTree.colors) ? barTree.colors : null
+    return colors && typeof colors[which] === "string" ? colors[which] : ""
+  }
+
 
   function commitGroups() {
     if (!barTree) return false
@@ -415,6 +463,27 @@ Item {
                           root.commitGroups()
                       }
                     }
+
+                    // Capsule colour, editable only once the entry carries a
+                    // committed group name (entries sharing a group edit the
+                    // same style key).
+                    ColorFieldRow {
+                      visible: !!modelData && typeof modelData.group === "string"
+                        && modelData.group.length > 0
+                      property string groupName: modelData ? (modelData.group || "") : ""
+                      hexValue: root.committedCapsuleColor(groupName)
+                      swatchColor: {
+                        var hex = root.committedCapsuleColor(groupName)
+                        if (hex !== "") { try { return Qt.color(hex) } catch (e) { } }
+                        return root.committedBarColorField("background") !== ""
+                          ? Qt.color(root.committedBarColorField("background"))
+                          : Color.bar.background
+                      }
+                      width: parent.width
+                      onCommitted: function (hex) {
+                        root.setCapsuleColor(groupName, hex)
+                      }
+                    }
                   }
                 }
               }
@@ -429,6 +498,86 @@ Item {
             font.pixelSize: Style.font.caption
           }
         }
+      }
+    }
+  }
+
+  // Numeric row: -/+ buttons plus a manually editable text field. The text
+  // re-syncs with the committed value whenever the committed value object is
+  // reassigned (every write swaps in a fresh clone).
+  component NumberStepper: Row {
+    id: stepper
+
+    property int stepperValue: 0
+    property int minimum: 0
+    property int maximum: 64
+    signal committed(int value)
+
+    function commitNow(raw) {
+      var n = parseInt(raw, 10)
+      if (!isFinite(n)) {
+        valueField.text = "" + stepper.stepperValue
+        return
+      }
+      stepper.committed(Math.max(stepper.minimum, Math.min(stepper.maximum, n)))
+    }
+
+    spacing: Style.spacing.xs
+
+    Button { text: "-"; onClicked: stepper.commitNow("" + (stepper.stepperValue - 1)) }
+    TextField {
+      id: valueField
+
+      width: 64
+      horizontalPadding: 6
+      verticalPadding: 2
+      font.pixelSize: Style.font.caption
+      placeholderText: stepper.minimum + "-" + stepper.maximum
+      onAccepted: stepper.commitNow(text)
+      Component.onCompleted: valueField.text = "" + stepper.stepperValue
+      Connections {
+        target: stepper
+        function onStepperValueChanged() { valueField.text = "" + stepper.stepperValue }
+      }
+    }
+    Button { text: "+"; onClicked: stepper.commitNow("" + (stepper.stepperValue + 1)) }
+  }
+
+
+  // Hex color row: small current-swatch chip next to a manual text field.
+  // Empty commits restore the theme default for that key.
+  component ColorFieldRow: Row {
+    id: colorRow
+
+    property string hexValue: ""
+    property color swatchColor: "transparent"
+    signal committed(string hex)
+
+    spacing: Style.spacing.xs
+
+    Rectangle {
+      width: Style.font.body
+      height: Style.font.body
+      radius: Math.min(width, height) / 2
+      color: colorRow.swatchColor
+      border.width: 1
+      border.color: root.borderColor
+      anchors.verticalCenter: parent.verticalCenter
+    }
+
+    TextField {
+      id: hexField
+
+      width: 96
+      horizontalPadding: 6
+      verticalPadding: 2
+      font.pixelSize: Style.font.caption
+      placeholderText: "#RRGGBB"
+      onAccepted: colorRow.committed(hexField.text.trim())
+      Component.onCompleted: hexField.text = colorRow.hexValue
+      Connections {
+        target: colorRow
+        function onHexValueChanged() { hexField.text = colorRow.hexValue }
       }
     }
   }

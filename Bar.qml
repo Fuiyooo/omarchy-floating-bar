@@ -66,6 +66,13 @@ Item {
   //   capsules.enabled — group fields render as fully-rounded capsules
   property bool floatingOn: true
   property bool capsulesOn: false
+  // Full-width backdrop switch (capsules.backdrop; false = bare capsules).
+  property bool backdropOn: true
+  // Per-group capsule paint, from `capsules.styles`: name -> {color: "#hex"}.
+  property var capsuleStyles: ({})
+  // Bar palette overrides (`bar.colors.background` / `.text`).
+  property string barColorOverride: ""
+  property string barTextOverride: ""
   property bool centerSectionHovered: false
   // One bar surface exists per monitor and each reports into this count, so a
   // pointer crossing from one monitor's bar to another's stays counted however
@@ -84,13 +91,15 @@ Item {
   property string fontFamily: Style.font.family
   // Bound to the central Color singleton so the bar tracks shell.toml's
   // [bar] section. Property names kept for the rest of this file's bindings.
-  property color themeForeground: Color.bar.text
+  property color themeForeground: root.barTextOverride !== ""
+    ? root.barTextOverride : Color.bar.text
   property color themeContrastForeground: Color.background
   property color transparentForeground: Color.bar.text
   property color foreground: themeForeground
   property color barForeground: useTransparentForeground ? transparentForeground : themeForeground
   property bool foregroundAnimationEnabled: true
-  property color background: Color.bar.background
+  property color background: root.barColorOverride !== ""
+    ? root.barColorOverride : Color.bar.background
   property color urgent: Color.bar.active
 
   Behavior on barForeground { enabled: root.foregroundAnimationEnabled; ColorAnimation { duration: 420; easing.type: Easing.InOutCubic } }
@@ -612,6 +621,15 @@ Item {
     var radius = Number(corners && corners.radius !== undefined ? corners.radius : NaN)
     pillRadius = corners && isFinite(radius) && radius > 0
       ? Math.min(18, Math.round(radius)) : 0
+    backdropOn = !capsules || capsules.backdrop !== false
+    capsuleStyles = capsules && Util.isPlainObject(capsules.styles) ? capsules.styles : ({})
+    var colors = Util.isPlainObject(config.colors) ? config.colors : null
+    var bg = colors ? String(colors.background || "") : ""
+    var fg = colors ? String(colors.text || "") : ""
+    try { if (bg === "") barColorOverride = ""
+      else { var c1 = Qt.color(bg); barColorOverride = c1 } } catch (e) { barColorOverride = "" }
+    try { if (fg === "") barTextOverride = ""
+      else { var c2 = Qt.color(fg); barTextOverride = c2 } } catch (e) { barTextOverride = "" }
 
     // layoutEntries feeds plain JS arrays to the module Repeaters, and QML
     // cannot diff those: reassigning layoutConfig rebuilds every widget on
@@ -1393,7 +1411,7 @@ Item {
           anchors.fill: parent
           color: root.transparent ? "transparent" : root.background
           radius: root.pillRadius
-          visible: !root.transparent
+          visible: !root.transparent && root.backdropOn
         }
 
         CenterModules { anchors.fill: parent }
@@ -1422,7 +1440,7 @@ Item {
           anchors.fill: parent
           color: root.transparent ? "transparent" : root.background
           radius: root.pillRadius
-          visible: !root.transparent
+          visible: !root.transparent && root.backdropOn
         }
 
         CenterModules { anchors.fill: parent }
@@ -1569,6 +1587,17 @@ Item {
   // field `group` sama jadi satu segmen; tanpa `group` jadi segmen mandiri
   // tanpa pill. Order dizinkan berubah lewat drag-reorder, jadi grouping
   // hanya untuk entri yang berdempetan.
+  // Per-group capsule paint. An entry without explicit style falls back to
+  // the bar background; an invalid hex string falls back to the same.
+  function capsuleColorFor(groupName) {
+    var group = String(groupName || "")
+    var style = capsuleStyles ? capsuleStyles[group] : null
+    if (Util.isPlainObject(style) && style.color) {
+      try { return Qt.color(String(style.color)) } catch (e) { }
+    }
+    return root.background
+  }
+
   function groupSegments(entries) {
     var out = []
     var current = null
@@ -1857,7 +1886,7 @@ Item {
     BorderSurface {
       anchors.fill: parent
       visible: pill.grouped && !root.transparent
-      color: root.background
+      color: root.capsuleColorFor(segment ? segment.group : "")
       radius: root.pillRadius > 0
         ? Math.min(root.pillRadius, Math.min(pill.width, pill.height) / 2)
         : 0
