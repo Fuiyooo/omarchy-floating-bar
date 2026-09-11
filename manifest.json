@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "id": "dime.floating-bar",
+  "name": "Floating Bar",
+  "version": "0.1.0",
+  "author": "dime",
+  "description": "Omarchy status bar restyled as a floating bar with fully-rounded capsule groups clustered via optional 'group' fields in shell.json.",
+  "kinds": [
+    "bar"
+  ],
+  "entryPoints": {
+    "bar": "Bar.qml"
+  },
+  "omarchy": {
+    "clonedFrom": "omarchy.bar"
+  },
+  "license": "MIT"
+}
