@@ -105,6 +105,39 @@ Item {
     return Color.bar.background
   }
 
+  // Static glyph per widget id, so cards can be identified at a glance
+  // without reading names. Unmapped ids fall back to a small square chip.
+  function widgetIcon(id) {
+    var icons = {
+      "omarchy.menu": "󰮗",
+      "omarchy.workspaces": "󰆍",
+      "omarchy.clock": "󰥔",
+      "omarchy.indicators": "󰍛",
+      "omarchy.weather": "󰖙",
+      "omarchy.system-update": "󰚰",
+      "omarchy.keyboard-layout": "󰌌",
+      "omarchy.tray": "󰚗",
+      "omarchy.network": "󰛳",
+      "omarchy.bluetooth": "󰂯",
+      "omarchy.audio": "󰕾",
+      "omarchy.monitor": "󰍹",
+      "omarchy.power": "󰚦",
+      "omarchy.agents": "󰧑",
+      "omarchy.media": "󰝚",
+      "omarchy.microphone": "󰍬",
+      "omarchy.tailscale": "󰛹",
+      "omarchy.active-window": "󰣆",
+      "dime.floating-bar": "☰",
+      "sinkeat.keysmith": "⌨",
+      "madddtone.gomysql-peek": "󰇀",
+      "agx.screen-time": "󰥖"
+    }
+    if (icons[id]) return icons[id]
+    var canonical = String(id || "")
+    if (icons[canonical]) return icons[canonical]
+    return ""
+  }
+
   function shortWidgetId(id) {
     var parts = String(id || "").split(".")
     if (parts.length > 1 && (parts[0] === "omarchy" || parts[0] === "dime"))
@@ -784,73 +817,78 @@ Item {
         ? Qt.rgba(capsuleFill().r, capsuleFill().g, capsuleFill().b, 0.16)
         : "transparent"
 
-      Item {
-        id: handle
+      Row {
+        anchors.verticalCenter: parent.verticalCenter
+        anchors.left: parent.left
+        anchors.leftMargin: 6
+        spacing: 5
 
-        x: 4
-        width: 18
-        height: 20
+        Item {
+          id: handle
+
+          width: 16
+          height: 16
+
+          Text {
+            anchors.centerIn: parent
+            text: "⋮⋮"
+            color: root.fgColor
+            opacity: 0.55
+            font.family: root.fontFamily
+            font.pixelSize: Style.font.caption
+          }
+
+          MouseArea {
+            id: cellArea
+
+            anchors.fill: parent
+            acceptedButtons: Qt.LeftButton
+            cursorShape: Qt.DragMoveCursor
+            onPressed: root.startDrag(entryCell)
+            onPositionChanged: function (mouse) {
+              if (!entryCell.dragging) return
+              var scene = mapToItem(null, mouse.x + width / 2, mouse.y + height / 2)
+              root.updateDragHover(scene)
+            }
+            onReleased: root.finishDrag()
+            onCanceled: root.finishDrag()
+          }
+        }
+
+        Rectangle {
+          width: 7
+          height: 7
+          radius: 3.5
+          anchors.verticalCenter: parent.verticalCenter
+          visible: entryCell.hasGroup
+          color: {
+            var hex = root.committedCapsuleColor(entryCell.entryModel
+              && typeof entryCell.entryModel.group === "string" ? entryCell.entryModel.group : "")
+            if (hex !== "") { try { return Qt.color(hex) } catch (e) { } }
+            return root.capsuleFill()
+          }
+        }
 
         Text {
-          anchors.centerIn: parent
-          text: "⋮⋮"
+          anchors.verticalCenter: parent.verticalCenter
+          text: root.widgetIcon(entryCell.entryId) || "·"
           color: root.fgColor
-          opacity: 0.55
+          opacity: 0.85
           font.family: root.fontFamily
           font.pixelSize: Style.font.caption
         }
 
-        MouseArea {
-          id: cellArea
-
-          anchors.fill: parent
-          acceptedButtons: Qt.LeftButton
-          cursorShape: Qt.DragMoveCursor
-          onPressed: root.startDrag(entryCell)
-          onPositionChanged: function (mouse) {
-            if (!entryCell.dragging) return
-            var scene = mapToItem(null, mouse.x + width / 2, mouse.y + height / 2)
-            root.updateDragHover(scene)
-          }
-          onReleased: root.finishDrag()
-          onCanceled: root.finishDrag()
+        Text {
+          anchors.verticalCenter: parent.verticalCenter
+          width: Math.max(0, cardFrame.width - 74)
+          elide: Text.ElideRight
+          maximumLineCount: 1
+          text: root.shortWidgetId(entryCell.entryId)
+          color: root.fgColor
+          font.family: root.fontFamily
+          font.pixelSize: Style.font.caption
+          font.bold: true
         }
-      }
-
-      Rectangle {
-        x: 26
-        width: 8
-        height: 8
-        radius: 4
-        y: 6
-        visible: entryCell.hasGroup
-        color: {
-          var grp = entryCell.entryModel && typeof entryCell.entryModel.group === "string"
-            ? entryCell.entryModel.group : ""
-          var hex = root.committedCapsuleColor(grp)
-          if (hex !== "") { try { return Qt.color(hex) } catch (e) { } }
-          return root.fgColor
-        }
-      }
-
-      Text {
-        readonly property string label: root.shortWidgetId(entryCell.entryId)
-
-        anchors.left: handle.right
-        anchors.leftMargin: 6
-        anchors.verticalCenter: parent.verticalCenter
-        width: parent.width - 60
-        elide: Text.ElideRight
-        text: label
-        color: root.fgColor
-        font.family: root.fontFamily
-        font.pixelSize: Style.font.caption
-
-      }
-
-      Item {
-        // keeps the clickable handle above the label row in stacking order
-        z: 2
       }
     }
 

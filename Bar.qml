@@ -26,6 +26,16 @@ Item {
   // Injected by the host shell. Used for shell-wide actions such as opening
   // settings and persisting inline widget state.
   property var shell: null
+  // Diagnostics switch: OMARCHY_PLUG_DEBUG=1 turns on verbose interaction
+  // logs. Nothing is logged in normal runs.
+  readonly property bool plugDebug: Quickshell.env("OMARCHY_PLUG_DEBUG") === "1"
+
+  function dbg() {
+    if (!plugDebug) return
+    var parts = []
+    for (var i = 0; i < arguments.length; i++) parts.push(String(arguments[i]))
+    console.warn("PLUG " + parts.join(" "))
+  }
   // Manifest for the active bar option. Present for custom bars and useful for
   // diagnostics; the built-in bar does not otherwise need it.
   property var manifest: null
@@ -1059,6 +1069,9 @@ Item {
 
   function pressModuleClickTarget(slot, button, localX, localY) {
     var target = moduleClickTargetAt(slot, localX, localY)
+    root.dbg("pressTarget", slot.moduleName,
+      "target=" + (target ? (target.moduleName || "?") : "NONE"),
+      "targets=" + root.clickTargets.length)
     if (!target) return false
 
     target.triggerPress(button)
@@ -1186,6 +1199,7 @@ Item {
   }
 
   function hideTooltip(target) {
+    root.dbg("hideTooltip", target && target.moduleName ? target.moduleName : (target ? "widget" : "null"))
     if (tooltipTarget !== target && pendingTooltipTarget !== target) return
 
     tooltipRequest += 1
@@ -2168,6 +2182,7 @@ Item {
           return
         }
 
+        root.dbg("click", slot.moduleName, "hovered=" + slot.hovered, "w=" + slot.width)
         if (!root.pressModuleClickTarget(slot, mouse.button, mouse.x, mouse.y)) mouse.accepted = false
       }
     }
@@ -2182,6 +2197,7 @@ Item {
         ? root : root.pluginBarApiFor(pluginApiId, moduleName, registered)
       if ("moduleName" in target) target.moduleName = moduleName
       if ("settings" in target) target.settings = moduleSettings
+      root.dbg("inject", moduleName, "fp=" + firstParty, "reg=" + registered)
     }
 
     Component {
