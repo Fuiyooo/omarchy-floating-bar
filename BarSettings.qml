@@ -1,14 +1,15 @@
 import QtQuick
 import Quickshell
+import Quickshell.Io
 import Quickshell.Wayland
 import qs.Commons
 import qs.Ui
 
-// Floating settings surface for the dime.floating-bar plugin. Lets the user
-// toggle the floating layout (with an edge-gap stepper) and capsule groups,
-// and assign `group` names to bar entries per section. All changes persist
-// straight into the `bar:` subtree of shell.json via the host facade's
-// mutateShellConfig, which the running bar hot-reloads.
+// Floating settings surface for dime.floating-bar. Toggles the floating
+// layout (edge-gap stepper) and capsule groups, and assigns `group` names to
+// bar entries per section. Everything persists through config-apply.py (the
+// native file-writer pattern Keysmith uses): the plugin rewrites the whole
+// `bar:` subtree of shell.json and the running bar hot-reloads it.
 Item {
   id: root
 
@@ -22,112 +23,110 @@ Item {
   readonly property color borderColor: Color.menu.border
   readonly property string fontFamily: Style.font.family
   readonly property var sections: ["left", "center", "right"]
-  // Current committed state, read at open time from the facade's barConfig
-  // snapshot. The overlay is not keepLoaded, so every open re-injects fresh.
-  readonly property var barState: root.shell && Util.isPlainObject(root.shell.barConfig)
-    ? root.shell.barConfig : {}
-  readonly property var cFloating: Util.isPlainObject(barState.floating) ? barState.floating : {}
-  readonly property bool floatingOn: cFloating.enabled !== false
-  readonly property int floatingGap: {
-    var n = Number(cFloating.gap !== undefined ? cFloating.gap : NaN)
-    return isFinite(n) && n >= 0 ? Math.round(n) : Style.space(9)
-  }
-  readonly property bool capsulesOn: Util.isPlainObject(barState.capsules)
-    ? barState.capsules.enabled !== false : false
+  readonly property bool hasConfigWriter: true
 
-  // Live text-field edits per section: map of "section:index" -> group string
+  // Authoritative working copy of the committed `bar:` subtree, deep-cloned
+  // and re-seeded fresh from disk on every open(). Edits mutate this object;
+  // commit replaces the whole subtree via config-apply.py.
+  property var barTree: null
+
+  readonly property bool floatingOn: !barTree || !Util.isPlainObject(barTree.floating)
+    ? true : barTree.floating.enabled !== false
+  readonly property int floatingGap: barTree && Util.isPlainObject(barTree.floating)
+    && barTree.floating.gap !== undefined ? Math.round(Number(barTree.floating.gap)) : Style.space(9)
+  readonly property bool capsulesOn: !!barTree && Util.isPlainObject(barTree.capsules)
+    ? barTree.capsules.enabled !== false : true
+
+  // Draft group edits per "section:index", keyed the same as the section
+  // editor rows. Applied en-masse by Apply groups.
   property var draftGroups: ({})
 
-  readonly property bool hasConfigWriter: root.shell && typeof root.shell.mutateShellConfig === "function"
+  FileView {
+    id: configView
 
-  function writeConfig(mutate) {
-    if (!root.hasConfigWriter) {
-      root.status = "config access unavailable"
-      console.warn("PLUG writeConfig: NO writer")
-      return false
-    }
-    var ok = root.shell.mutateShellConfig(mutate)
-    console.warn("PLUG writeConfig result=" + ok)
-    root.status = ok ? "saved" : "config write failed"
-    statusTimer.restart()
-    return ok
+    path: Quickshell.env("HOME") + "/.config/omarchy/shell.json"
+    printErrors: false
   }
 
-  function commitGroups() {
-    // Flush every pending draft edit into the next config write.
-    return writeConfig(function(cfg) {
-      var bar = Util.isPlainObject(cfg.bar) ? cfg.bar : {}
-      var layout = Util.isPlainObject(bar.layout) ? bar.layout : {}
-      for (var si in root.sections) {
-        var section = root.sections[si]
-        var list = Util.isPlainObject(layout[section]) ? layout[section] : []
-        for (var i = 0; i < list.length; i++) {
-          var key = section + ":" + i
-          var entry = Util.isPlainObject(list[i]) ? list[i] : {}
-          var group = root.draftGroups[key]
-          if (group === undefined) {
-            group = typeof entry.group === "string" ? entry.group : ""
-          }
-          if (group.length > 0) entry.group = group
-          else delete entry.group
-        }
-      }
-      bar.layout = layout
-      cfg.bar = bar
-    })
+  function seedBarTree() {
+    configView.reload()
+    var text = ""
+    try { text = configView.text() } catch (e) { text = "" }
+    var parsed = null
+    try { parsed = JSON.parse(text) } catch (e) { parsed = null }
+    var bar = parsed && Util.isPlainObject(parsed.bar) ? parsed.bar : {}
+    barTree = JSON.parse(JSON.stringify(bar))
+    draftGroups = ({})
+    if (!Util.isPlainObject(barTree.layout)) barTree.layout = { left: [], center: [], right: [] }
+  }
+
+  function applyBarTree() {
+    if (!barTree) {
+      root.status = "no config loaded"
+      statusTimer.restart()
+      return false
+    }
+    var payload = ""
+    try { payload = JSON.stringify({ bar: JSON.parse(JSON.stringify(barTree)) }) } catch (e) {
+      root.status = "failed: serialise"
+      statusTimer.restart()
+      return false
+    }
+    console.warn("PLUG applyBarTree: writing", payload.length, "bytes")
+    var dir = String(Qt.resolvedUrl(".")).replace(/\/$/, "/")
+    dir = dir.replace("file://", "")
+    applyProc.command = ["python3", dir + "config-apply.py", payload]
+    applyProc.running = true
+    return true
   }
 
   function setFloating(on) {
-    return writeConfig(function(cfg) {
-      var bar = Util.isPlainObject(cfg.bar) ? cfg.bar : {}
-      bar.floating = { enabled: on, gap: root.floatingGap }
-      cfg.bar = bar
-    })
+    if (!barTree) return false
+    if (!Util.isPlainObject(barTree.floating)) barTree.floating = {}
+    barTree.floating.enabled = on
+    if (barTree.floating.gap === undefined) barTree.floating.gap = Style.space(9)
+    return applyBarTree()
   }
 
   function setGap(gap) {
+    if (!barTree) return false
     var n = Math.max(0, Math.min(64, Math.round(gap)))
-    return writeConfig(function(cfg) {
-      var bar = Util.isPlainObject(cfg.bar) ? cfg.bar : {}
-      bar.floating = { enabled: root.floatingOn, gap: n }
-      cfg.bar = bar
-    })
+    if (!Util.isPlainObject(barTree.floating)) barTree.floating = { enabled: true }
+    barTree.floating.gap = n
+    return applyBarTree()
   }
 
   function setCapsules(on) {
-    return writeConfig(function(cfg) {
-      var bar = Util.isPlainObject(cfg.bar) ? cfg.bar : {}
-      bar.capsules = { enabled: on }
-      cfg.bar = bar
-    })
+    if (!barTree) return false
+    if (!Util.isPlainObject(barTree.capsules)) barTree.capsules = {}
+    barTree.capsules.enabled = on
+    return applyBarTree()
   }
 
-  function testConfigWrite(arg) {
-    var wrote = writeConfig(function(cfg) {
-      var bar = Util.isPlainObject(cfg.bar) ? cfg.bar : {}
-      var floating = Util.isPlainObject(bar.floating) ? bar.floating : { enabled: true, gap: 9 }
-      bar.floating = floating
-      cfg.bar = bar
-    })
-    return wrote ? "ok" : "denied"
+  function commitGroups() {
+    if (!barTree) return false
+    var layout = Util.isPlainObject(barTree.layout) ? barTree.layout : null
+    if (!layout) return false
+    for (var si = 0; si < root.sections.length; si++) {
+      var section = root.sections[si]
+      var list = Array.isArray(layout[section]) ? layout[section] : []
+      for (var i = 0; i < list.length; i++) {
+        var key = section + ":" + i
+        var entry = Util.isPlainObject(list[i]) ? list[i] : {}
+        var group = draftGroups[key]
+        if (group === undefined)
+          group = typeof entry.group === "string" ? entry.group : ""
+        if (group.length > 0) entry.group = group
+        else delete entry.group
+      }
+    }
+    return applyBarTree()
   }
 
   function open(payloadJson) {
-    console.warn("PLUG settings open:",
-      "shell=" + (typeof root.shell),
-      "mutate=" + (root.shell ? typeof root.shell.mutateShellConfig : "n/a"))
+    console.warn("PLUG settings open")
     opened = true
-    // Self-test the config writer right at open time; the swing through
-    // writeConfig re-writes the current floating block unchanged, so this is
-    // a synchronous smoke test for the mutate capabilities profile.
-    writeConfig(function(cfg) {
-      var bar = Util.isPlainObject(cfg.bar) ? cfg.bar : {}
-      var floating = Util.isPlainObject(bar.floating) ? bar.floating : { enabled: true, gap: 9 }
-      bar.floating = floating
-      cfg.bar = bar
-    })
-    root.status = ""
-    root.draftGroups = ({})
+    seedBarTree()
   }
 
   function close() {
@@ -136,8 +135,32 @@ Item {
 
   Timer {
     id: statusTimer
-    interval: 2500
+
+    interval: 2600
     onTriggered: root.status = ""
+  }
+
+  Process {
+    id: applyProc
+
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: {
+        try {
+          var reply = JSON.parse(text)
+          root.status = reply.ok === true ? "saved" : "failed: " + (reply.error || "unknown")
+        } catch (e) {
+          root.status = "failed: unparsable writer reply"
+        }
+        statusTimer.restart()
+      }
+    }
+    onExited: function (exitCode) {
+      if (exitCode !== 0 && root.status.indexOf("failed") !== 0) {
+        root.status = "failed: config-apply exited " + exitCode
+        statusTimer.restart()
+      }
+    }
   }
 
   PanelWindow {
@@ -156,7 +179,6 @@ Item {
       color: Color.menu.scrim
 
       MouseArea {
-        // Click-outside dismissals, matching other omarchy overlay panels.
         anchors.fill: parent
         onClicked: root.close()
       }
@@ -166,7 +188,7 @@ Item {
       id: card
 
       implicitWidth: 760
-      implicitHeight: contentCol.implicitHeight + Style.spacing.panelPadding * 2
+      implicitHeight: contentCol.implicitHeight + Style.spacing.panelPadding
       anchors.centerIn: parent
       color: root.cardColor
       borderSpec: Border.surfaceSpec("menu", "border", root.borderColor, 1)
@@ -176,14 +198,14 @@ Item {
 
       Flickable {
         anchors.fill: parent
-        contentHeight: contentCol.implicitHeight + Style.spacing.panelPadding * 2
+        contentHeight: contentCol.implicitHeight + Style.spacing.panelPadding
         clip: true
 
         Column {
           id: contentCol
 
-          x: parent.width / 2 - width / 2
-          y: Style.spacing.panelPadding
+          x: (card.implicitWidth - width) / 2
+          y: Style.spacing.panelPadding / 2
           spacing: Style.spacing.panelGap
 
           Text {
@@ -197,20 +219,19 @@ Item {
           Text {
             width: card.implicitWidth - Style.spacing.panelPadding * 2
             wrapMode: Text.Wrap
-            text: "Floating: inset the bar from the screen edges. Capsules: entries sharing the same \"group\" render in one capsule. Group edits apply per section, in layout order."
-            color: Qt.darker(root.fgColor, 1.8)
+            text: "Floating: inset the bar from the screen edges. Capsules: consecutive entries sharing the same group render in one capsule. Entries at the top and bottom of a group are labelled by position."
+            color: root.fgColor
+            opacity: 0.75
             font.family: root.fontFamily
             font.pixelSize: Style.font.bodySmall
           }
 
-          // ---------- Floating row
           Row {
             spacing: Style.spacing.lg
 
             ToggleSwitch {
               anchors.verticalCenter: parent.verticalCenter
               checked: root.floatingOn
-              interactive: root.hasConfigWriter
               onToggled: root.setFloating(!root.floatingOn)
             }
 
@@ -227,11 +248,7 @@ Item {
               spacing: Style.spacing.sm
               anchors.verticalCenter: parent.verticalCenter
 
-              Button {
-                id: minusBtn
-                text: "<"
-                onClicked: root.setGap(root.floatingGap - 1)
-              }
+              Button { text: "-"; onClicked: root.setGap(root.floatingGap - 1) }
               Text {
                 anchors.verticalCenter: parent.verticalCenter
                 text: "gap " + root.floatingGap + "px"
@@ -239,22 +256,16 @@ Item {
                 font.family: root.fontFamily
                 font.pixelSize: Style.font.body
               }
-              Button {
-                id: plusBtn
-                text: ">"
-                onClicked: root.setGap(root.floatingGap + 1)
-              }
+              Button { text: "+"; onClicked: root.setGap(root.floatingGap + 1) }
             }
           }
 
-          // ---------- Capsules row
           Row {
             spacing: Style.spacing.lg
 
             ToggleSwitch {
               anchors.verticalCenter: parent.verticalCenter
               checked: root.capsulesOn
-              interactive: root.hasConfigWriter
               onToggled: root.setCapsules(!root.capsulesOn)
             }
 
@@ -267,9 +278,6 @@ Item {
             }
           }
 
-          // ---------- Group editor per section
-          // Spacer used purely for rhythm between the toggles and grouped
-          // section editors.
           Item { width: 1; height: Style.spacing.sm }
 
           Row {
@@ -280,18 +288,18 @@ Item {
 
               Column {
                 id: pillSection
+
                 required property string modelData
-                readonly property string label: modelData
+                readonly property string sectionName: modelData
                 readonly property var entries: {
-                  var cfg = root.barState
-                  var layout = cfg && Util.isPlainObject(cfg.layout) ? cfg.layout : null
-                  return layout && Array.isArray(layout[label]) ? layout[label] : []
+                  var layout = barTree && Util.isPlainObject(barTree.layout) ? barTree.layout : null
+                  return layout && Array.isArray(layout[sectionName]) ? layout[sectionName] : []
                 }
 
                 width: (card.implicitWidth - Style.spacing.panelPadding * 2 - Style.spacing.panelGap * 2) / 3
 
                 Text {
-                  text: pillSection.label.toUpperCase()
+                  text: pillSection.sectionName.toUpperCase()
                   color: root.fgColor
                   font.family: root.fontFamily
                   font.pixelSize: Style.font.caption
@@ -300,11 +308,12 @@ Item {
                 }
 
                 Repeater {
-                  model: entries
+                  model: pillSection.entries
 
                   Column {
                     required property var modelData
                     required property int index
+
                     width: parent.width
                     spacing: Style.spacing.xxs
 
@@ -323,14 +332,18 @@ Item {
                       horizontalPadding: 6
                       verticalPadding: 2
                       font.pixelSize: Style.font.caption
-                      initialText: root.draftGroups[pillSection.label + ":" + index] !== undefined
-                        ? root.draftGroups[pillSection.label + ":" + index]
-                        : (modelData.group || "")
-                      hint: "no group"
-                      enabled: root.hasConfigWriter
-                      onGroupEdited: function (value) {
+                      initialText: {
+                        var key = pillSection.sectionName + ":" + index
+                        return draftGroups[key] !== undefined
+                          ? draftGroups[key]
+                          : ((modelData && typeof modelData.group === "string") ? modelData.group : "")
+                      }
+                      placeholderText: "no group"
+                      enabled: root.opened
+                      onAccepted: {
+                        var key = pillSection.sectionName + ":" + index
                         var draft = root.draftGroups
-                        draft[pillSection.label + ":" + index] = value
+                        draft[key] = text.trim()
                         root.draftGroups = draft
                       }
                     }
@@ -343,14 +356,13 @@ Item {
           Button {
             text: "Apply groups"
             bordered: true
-            enabled: root.hasConfigWriter
             onClicked: root.commitGroups()
           }
 
           Text {
-            text: root.status === "" ? "" : root.status
+            visible: root.status !== ""
+            text: root.status
             color: root.fgColor
-            opacity: 0.8
             font.family: root.fontFamily
             font.pixelSize: Style.font.caption
           }
@@ -362,13 +374,10 @@ Item {
   component GroupField: TextField {
     id: gf
 
-    property string hint: ""
     property string initialText: ""
-    signal groupEdited(string value)
 
-    placeholderText: gf.hint
-    onAccepted: gf.groupEdited(gf.text.trim())
-
+    font.pixelSize: Style.font.caption
+    placeholderText: "no group"
     Component.onCompleted: text = gf.initialText
   }
 }
