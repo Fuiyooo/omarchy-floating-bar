@@ -2,17 +2,28 @@
   "schemaVersion": 1,
   "id": "dime.floating-bar",
   "name": "Floating Bar",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "author": "dime",
-  "description": "Omarchy status bar restyled as a floating bar with fully-rounded capsule groups clustered via optional 'group' fields in shell.json.",
+  "description": "Omarchy status bar as a floating bar with capsule groups, editable from a built-in settings panel.",
   "kinds": [
-    "bar"
+    "bar",
+    "overlay",
+    "bar-widget"
   ],
   "entryPoints": {
-    "bar": "Bar.qml"
+    "bar": "Bar.qml",
+    "overlay": "BarSettings.qml",
+    "barWidget": "SettingsButton.qml"
   },
   "omarchy": {
     "clonedFrom": "omarchy.bar"
   },
-  "license": "MIT"
+  "license": "MIT",
+  "barWidget": {
+    "displayName": "Floating Bar settings",
+    "description": "Toggle floating mode, edge gap, and capsule groups",
+    "category": "Layout",
+    "allowMultiple": false,
+    "defaultSection": "center"
+  }
 }

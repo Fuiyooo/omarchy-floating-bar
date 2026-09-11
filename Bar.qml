@@ -55,10 +55,15 @@ Item {
   property bool transparent: false
   // Floating-bar look: the surface is inset from the screen edges and paints
   // its own rounded backdrop instead of stretching edge to edge.
-  readonly property int floatingMargin: Style.space(9)
+  property int floatingMargin: Style.space(9)
   readonly property real pillRadius: Math.max(6, Math.min(Style.cornerRadius, 12))
   readonly property int pillGap: Style.space(4)
   readonly property int pillPadding: Style.space(9)
+  // Feature switches, driven from the `bar:` subtree in shell.json:
+  //   floating.gap — pixels inset from the screen edges (0 = docked)
+  //   capsules.enabled — group fields render as fully-rounded capsules
+  property bool floatingOn: true
+  property bool capsulesOn: false
   property bool centerSectionHovered: false
   // One bar surface exists per monitor and each reports into this count, so a
   // pointer crossing from one monitor's bar to another's stays counted however
@@ -590,6 +595,17 @@ Item {
     position = normalizePosition(config.position)
     setRequestedTransparency(config.transparent === true)
     centerAnchor = Util.canonicalWidgetId(config.centerAnchor || "")
+
+    // Floating-bar and capsule switches. Missing keys keep the plugin's
+    // stock behaviour: floating on with the spacing-scale gap, capsules on
+    // for layout entries that actually carry a `group`.
+    var floating = Util.isPlainObject(config.floating) ? config.floating : null
+    floatingOn = !floating || floating.enabled !== false
+    var gap = Number(floating && floating.gap !== undefined ? floating.gap : NaN)
+    floatingMargin = !floatingOn ? 0 : (isFinite(gap) && gap >= 0
+      ? Math.round(gap) : Style.space(9))
+    var capsules = Util.isPlainObject(config.capsules) ? config.capsules : null
+    capsulesOn = !capsules || capsules.enabled !== false
 
     // layoutEntries feeds plain JS arrays to the module Repeaters, and QML
     // cannot diff those: reassigning layoutConfig rebuilds every widget on
@@ -1371,7 +1387,9 @@ Item {
           anchors.fill: parent
           color: root.transparent ? "transparent" : root.background
           radius: root.pillRadius
-          visible: !root.transparent
+          // Capsule mode owns the visual: the full-width backdrop only
+          // paints while capsules are off.
+          visible: !root.transparent && !root.capsulesOn
         }
 
         CenterModules { anchors.fill: parent }
@@ -1400,7 +1418,9 @@ Item {
           anchors.fill: parent
           color: root.transparent ? "transparent" : root.background
           radius: root.pillRadius
-          visible: !root.transparent
+          // Capsule mode owns the visual: the full-width backdrop only
+          // paints while capsules are off.
+          visible: !root.transparent && !root.capsulesOn
         }
 
         CenterModules { anchors.fill: parent }
@@ -1786,7 +1806,7 @@ Item {
       id: horizontalModuleList
 
       Row {
-        spacing: root.pillGap
+        spacing: root.capsulesOn ? root.pillGap : 0
 
         Repeater {
           model: moduleListRoot.segments
@@ -1804,7 +1824,7 @@ Item {
       id: verticalModuleList
 
       Column {
-        spacing: root.pillGap
+        spacing: root.capsulesOn ? root.pillGap : 0
 
         Repeater {
           model: moduleListRoot.segments
@@ -1828,7 +1848,7 @@ Item {
 
     property var segment
     property string region: ""
-    readonly property bool grouped: segment && segment.group !== ""
+    readonly property bool grouped: root.capsulesOn && segment && segment.group !== ""
     readonly property real pad: grouped ? root.pillPadding : 0
 
     // Painted first so the capsule backdrop stays UNDER the widget content.
