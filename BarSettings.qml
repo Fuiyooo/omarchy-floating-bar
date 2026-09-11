@@ -102,6 +102,16 @@ Item {
     })
   }
 
+  function testConfigWrite(arg) {
+    var wrote = writeConfig(function(cfg) {
+      var bar = Util.isPlainObject(cfg.bar) ? cfg.bar : {}
+      var floating = Util.isPlainObject(bar.floating) ? bar.floating : { enabled: true, gap: 9 }
+      bar.floating = floating
+      cfg.bar = bar
+    })
+    return wrote ? "ok" : "denied"
+  }
+
   function open(payloadJson) {
     console.warn("PLUG settings open:",
       "shell=" + (typeof root.shell),
