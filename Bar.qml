@@ -1387,9 +1387,7 @@ Item {
           anchors.fill: parent
           color: root.transparent ? "transparent" : root.background
           radius: root.pillRadius
-          // Capsule mode owns the visual: the full-width backdrop only
-          // paints while capsules are off.
-          visible: !root.transparent && !root.capsulesOn
+          visible: !root.transparent
         }
 
         CenterModules { anchors.fill: parent }
@@ -1418,9 +1416,7 @@ Item {
           anchors.fill: parent
           color: root.transparent ? "transparent" : root.background
           radius: root.pillRadius
-          // Capsule mode owns the visual: the full-width backdrop only
-          // paints while capsules are off.
-          visible: !root.transparent && !root.capsulesOn
+          visible: !root.transparent
         }
 
         CenterModules { anchors.fill: parent }

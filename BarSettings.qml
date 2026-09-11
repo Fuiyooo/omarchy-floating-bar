@@ -66,6 +66,9 @@ Item {
       statusTimer.restart()
       return false
     }
+    // Re-assign the clone so nested mutations notify the QML bindings —
+    // that is what makes toggles flip on the spot instead of after reopen.
+    barTree = JSON.parse(JSON.stringify(barTree))
     var payload = ""
     try { payload = JSON.stringify({ bar: JSON.parse(JSON.stringify(barTree)) }) } catch (e) {
       root.status = "failed: serialise"
@@ -340,23 +343,24 @@ Item {
                       }
                       placeholderText: "no group"
                       enabled: root.opened
-                      onAccepted: {
+                      onGroupCommitted: {
                         var key = pillSection.sectionName + ":" + index
+                        var committedGroup = (modelData && typeof modelData.group === "string")
+                          ? modelData.group : ""
                         var draft = root.draftGroups
-                        draft[key] = text.trim()
+                        draft[key] = value
                         root.draftGroups = draft
+                        // editingFinished also fires on focus loss; skip when the
+                        // value equals what is already committed so focus change
+                        // does not re-write identical config.
+                        if (value !== committedGroup)
+                          root.commitGroups()
                       }
                     }
                   }
                 }
               }
             }
-          }
-
-          Button {
-            text: "Apply groups"
-            bordered: true
-            onClicked: root.commitGroups()
           }
 
           Text {
@@ -375,9 +379,12 @@ Item {
     id: gf
 
     property string initialText: ""
+    signal groupCommitted(string value)
 
     font.pixelSize: Style.font.caption
     placeholderText: "no group"
+    onAccepted: gf.groupCommitted(gf.text.trim())
+    onEditingFinished: gf.groupCommitted(gf.text.trim())
     Component.onCompleted: text = gf.initialText
   }
 }
