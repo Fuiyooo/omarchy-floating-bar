@@ -117,6 +117,15 @@ Item {
       "shell=" + (typeof root.shell),
       "mutate=" + (root.shell ? typeof root.shell.mutateShellConfig : "n/a"))
     opened = true
+    // Self-test the config writer right at open time; the swing through
+    // writeConfig re-writes the current floating block unchanged, so this is
+    // a synchronous smoke test for the mutate capabilities profile.
+    writeConfig(function(cfg) {
+      var bar = Util.isPlainObject(cfg.bar) ? cfg.bar : {}
+      var floating = Util.isPlainObject(bar.floating) ? bar.floating : { enabled: true, gap: 9 }
+      bar.floating = floating
+      cfg.bar = bar
+    })
     root.status = ""
     root.draftGroups = ({})
   }
