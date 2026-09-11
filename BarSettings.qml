@@ -77,8 +77,31 @@ Item {
     if (idx !== -1) list.splice(idx, 1)
   }
 
+  function startDrag(cell) {
+    if (!cell) return
+    var center = cell.mapToItem(null, cell.width / 2, cell.height / 2)
+    dragState = {
+      cell: cell,
+      fromSection: cell.owningSection,
+      fromIndex: cell.entryIndex,
+      id: cell.entryId
+    }
+    try {
+      var rootPoint = root.mapFromItem(null, center.x, center.y)
+      dragGhost.ghostX = rootPoint.x
+      dragGhost.ghostY = rootPoint.y
+      dragScene = { x: center.x, y: center.y }
+    } catch (e) { }
+  }
+
   function updateDragHover(scenePoint) {
     if (!dragState) return
+    try {
+      var rootPointNow = root.mapFromItem(null, scenePoint.x, scenePoint.y)
+      dragGhost.ghostX = rootPointNow.x
+      dragGhost.ghostY = rootPointNow.y
+      dragScene = { x: scenePoint.x, y: scenePoint.y }
+    } catch (e) { }
     var hover = { section: "", index: -2 }
     for (var name in _sectionColumns) {
       var column = _sectionColumns[name]
@@ -90,7 +113,7 @@ Item {
       if (Array.isArray(cells)) {
         for (var i = 0; i < cells.length; i++) {
           var cell = cells[i]
-          if (!cell) continue
+          if (!cell || cell === dragState.cell) continue
           var center = cell.mapToItem(null, cell.width / 2, cell.height / 2)
           if (scenePoint.y < center.y) {
             hover = { section: name, index: cell.entryIndex }
@@ -111,8 +134,12 @@ Item {
   }
 
   function finishDrag() {
-    if (dragState && dragHoverSection !== "")
-      moveEntry(dragState.fromSection, dragState.fromIndex, dragHoverSection, dragHoverIndex)
+    if (dragState && dragHoverSection !== "") {
+      var sameSection = dragHoverSection === dragState.fromSection
+      var sameIndex = dragHoverIndex === dragState.fromIndex
+      if (!sameSection || !sameIndex)
+        moveEntry(dragState.fromSection, dragState.fromIndex, dragHoverSection, dragHoverIndex)
+    }
     dragState = null
     dragHoverSection = ""
     dragHoverIndex = -2
@@ -357,14 +384,34 @@ Item {
     x: ghostX - width / 2
     y: ghostY - height / 2
 
-    Text {
-      id: ghostLabel
-
+    Row {
       anchors.centerIn: parent
-      text: root.dragState ? root.dragState.id : ""
-      color: root.fgColor
-      font.family: root.fontFamily
-      font.pixelSize: Style.font.caption
+      spacing: Style.spacing.xs
+
+      Rectangle {
+        width: Style.space(8)
+        height: Style.space(8)
+        radius: width / 2
+        anchors.verticalCenter: parent.verticalCenter
+        color: {
+          if (!root.dragState) return "transparent"
+          var cell = root.dragState.cell
+          var group = cell && cell.entryModel && typeof cell.entryModel.group === "string"
+            ? cell.entryModel.group : ""
+          var hex = root.committedCapsuleColor(group)
+          if (hex !== "") { try { return Qt.color(hex) } catch (e) { } }
+          return root.fgColor
+        }
+      }
+
+      Text {
+        id: ghostLabel
+
+        text: root.dragState ? root.dragState.id : ""
+        color: root.fgColor
+        font.family: root.fontFamily
+        font.pixelSize: Style.font.caption
+      }
     }
 
     BorderSurface {
@@ -628,7 +675,7 @@ Item {
       fromIndex: entryIndex,
       id: entryModel && entryModel.id ? entryModel.id : "?"
     })
-    readonly property bool dragging: cellArea.drag.active
+    readonly property bool dragging: root.dragState !== null && root.dragState.cell === entryCell
     readonly property bool hasGroup: !!entryModel && typeof entryModel.group === "string"
       && entryModel.group.length > 0
     readonly property bool hovered: root.dragState !== null
@@ -675,23 +722,14 @@ Item {
             height: Style.space(16)
             acceptedButtons: Qt.LeftButton
             cursorShape: Qt.DragMoveCursor
-            drag.target: entryCell
-            drag.axis: Drag.XAndYAxis
-            onPressed: {
-              entryCell.Drag.active = true
-              root.dragState = entryCell.dragPayload
-            }
+            onPressed: root.startDrag(entryCell)
             onPositionChanged: function (mouse) {
               if (!entryCell.dragging) return
               var scene = mapToItem(null, mouse.x + width / 2, mouse.y + height / 2)
-              root.updateDragHover(scene)
+              root.updateDragHover(scene, cellArea)
             }
-            onReleased: {
-              entryCell.x = 0
-              entryCell.y = 0
-              entryCell.Drag.active = false
-              root.finishDrag()
-            }
+            onReleased: root.finishDrag()
+            onCanceled: root.finishDrag()
           }
         }
 
