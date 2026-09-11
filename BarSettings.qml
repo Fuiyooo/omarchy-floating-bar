@@ -77,6 +77,19 @@ Item {
     if (idx !== -1) list.splice(idx, 1)
   }
 
+  function capsuleFill() {
+    var hex = root.committedBarColorField("background")
+    if (hex !== "") { try { return Qt.color(hex) } catch (e) { } }
+    return Color.bar.background
+  }
+
+  function shortWidgetId(id) {
+    var parts = String(id || "").split(".")
+    if (parts.length > 1 && (parts[0] === "omarchy" || parts[0] === "dime"))
+      parts.shift()
+    return parts.join(".")
+  }
+
   function startDrag(cell) {
     if (!cell) return
     var center = cell.mapToItem(null, cell.width / 2, cell.height / 2)
@@ -407,7 +420,7 @@ Item {
       Text {
         id: ghostLabel
 
-        text: root.dragState ? root.dragState.id : ""
+        text: root.dragState ? root.shortWidgetId(root.dragState.id) : ""
         color: root.fgColor
         font.family: root.fontFamily
         font.pixelSize: Style.font.caption
@@ -686,13 +699,6 @@ Item {
     height: cellCol.implicitHeight
     opacity: dragging ? 0.45 : 1.0
 
-    BorderSurface {
-      anchors.fill: cellCol
-      color: "transparent"
-      borderSpec: Border.flat(root.fgColor, entryCell.hovered ? 2 : 0)
-      opacity: entryCell.hovered ? 0.9 : 0.0
-      radius: Style.space(3)
-    }
 
     Column {
       id: cellCol
@@ -700,48 +706,75 @@ Item {
       width: parent.width
       spacing: Style.spacing.xxs
 
-      Row {
+      // Small card: handle + capsule swatch + readable text label, so each
+      // widget is recognised at a glance (and stays obvious while dragging).
+      BorderSurface {
         width: parent.width
+        height: Style.space(20)
+        color: entryCell.hasGroup
+          ? Qt.rgba(capsuleFill().r, capsuleFill().g, capsuleFill().b, 0.18)
+          : "transparent"
+        borderSpec: Border.flat(root.fgColor, entryCell.hovered ? 2 : 1)
+        radius: Style.space(5)
+        opacity: 1
 
-        Rectangle {
-          id: handle
-
-          width: Style.space(14)
-          height: Style.space(14)
-          radius: width / 2
-          color: entryCell.dragging ? Qt.rgba(0, 0, 0, 0.01) : "transparent"
-          border.width: 1
-          border.color: root.fgColor
-          opacity: 0.4
+        Row {
+          x: Style.space(4)
           anchors.verticalCenter: parent.verticalCenter
 
-          MouseArea {
-            id: cellArea
+          Item {
+            id: handle
 
-            width: Style.space(18)
-            height: Style.space(16)
-            acceptedButtons: Qt.LeftButton
-            cursorShape: Qt.DragMoveCursor
-            onPressed: root.startDrag(entryCell)
-            onPositionChanged: function (mouse) {
-              if (!entryCell.dragging) return
-              var scene = mapToItem(null, mouse.x + width / 2, mouse.y + height / 2)
-              root.updateDragHover(scene, cellArea)
+            width: Style.space(16)
+            height: Style.space(14)
+
+            Text {
+              anchors.centerIn: parent
+              text: "⋮⋮"
+              color: root.fgColor
+              opacity: 0.55
+              font.family: root.fontFamily
+              font.pixelSize: Style.font.caption
             }
-            onReleased: root.finishDrag()
-            onCanceled: root.finishDrag()
-          }
-        }
 
-        Text {
-          width: parent.width - handle.width
-          elide: Text.ElideMiddle
-          maximumLineCount: 1
-          text: entryCell.entryId
-          color: root.fgColor
-          font.family: root.fontFamily
-          font.pixelSize: Style.font.caption
-          anchors.verticalCenter: parent.verticalCenter
+            MouseArea {
+              id: cellArea
+
+              anchors.fill: parent
+              acceptedButtons: Qt.LeftButton
+              cursorShape: Qt.DragMoveCursor
+              onPressed: root.startDrag(entryCell)
+              onPositionChanged: function (mouse) {
+                if (!entryCell.dragging) return
+                var scene = mapToItem(null, mouse.x + width / 2, mouse.y + height / 2)
+                root.updateDragHover(scene)
+              }
+              onReleased: root.finishDrag()
+              onCanceled: root.finishDrag()
+            }
+          }
+
+          Rectangle {
+            width: Style.space(7)
+            height: Style.space(7)
+            radius: width / 2
+            anchors.verticalCenter: parent.verticalCenter
+            visible: entryCell.hasGroup
+            color: {
+              var hex = root.committedCapsuleColor(entryCell.entryModel ? entryCell.entryModel.group : "")
+              if (hex !== "") { try { return Qt.color(hex) } catch (e) { } }
+              return root.capsuleFill()
+            }
+          }
+
+          Text {
+            anchors.verticalCenter: parent.verticalCenter
+            text: root.shortWidgetId(entryCell.entryId)
+            color: root.fgColor
+            font.family: root.fontFamily
+            font.pixelSize: Style.font.bodySmall
+            font.bold: true
+          }
         }
       }
 
