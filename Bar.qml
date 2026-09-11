@@ -599,6 +599,7 @@ Item {
     // Floating-bar and capsule switches. Missing keys keep the plugin's
     // stock behaviour: floating on with the spacing-scale gap, capsules on
     // for layout entries that actually carry a `group`.
+    console.warn("PLUG applyBarConfig keys:", Object.keys(config).join(","), "float=", JSON.stringify(config.floating))
     var floating = Util.isPlainObject(config.floating) ? config.floating : null
     floatingOn = !floating || floating.enabled !== false
     var gap = Number(floating && floating.gap !== undefined ? floating.gap : NaN)
