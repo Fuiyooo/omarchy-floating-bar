@@ -49,7 +49,8 @@ Item {
   property int dragHoverIndex: -2      // -1 append, -2 nothing
 
   function registerSectionColumn(name, column) {
-    var next = JSON.parse(JSON.stringify(_sectionColumns))
+    var next = ({})
+    for (var k in _sectionColumns) next[k] = _sectionColumns[k]
     next[name] = column
     _sectionColumns = next
   }
