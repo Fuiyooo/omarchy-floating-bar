@@ -233,7 +233,6 @@ Item {
       statusTimer.restart()
       return false
     }
-    console.warn("PLUG applyBarTree: writing", payload.length, "bytes")
     var dir = String(Qt.resolvedUrl(".")).replace(/\/$/, "/")
     dir = dir.replace("file://", "")
     applyProc.command = ["python3", dir + "config-apply.py", payload]
@@ -365,7 +364,6 @@ Item {
   }
 
   function open(payloadJson) {
-    console.warn("PLUG settings open")
     opened = true
     seedBarTree()
   }
@@ -756,6 +754,7 @@ Item {
     property var entryModel: null
     property int entryIndex: 0
     property string owningSection: ""
+    readonly property string entryId: entryModel && entryModel.id ? String(entryModel.id) : "?"
     readonly property var dragPayload: ({
       fromSection: owningSection,
       fromIndex: entryIndex,
@@ -835,14 +834,18 @@ Item {
       }
 
       Text {
-        x: 38
-        width: parent.width - 42
+        readonly property string label: root.shortWidgetId(entryCell.entryId)
+
+        anchors.left: handle.right
+        anchors.leftMargin: 6
         anchors.verticalCenter: parent.verticalCenter
-        text: root.shortWidgetId(entryCell.entryId)
+        width: parent.width - 60
+        elide: Text.ElideRight
+        text: label
         color: root.fgColor
         font.family: root.fontFamily
-        font.pixelSize: Style.font.bodySmall
-        font.bold: true
+        font.pixelSize: Style.font.caption
+
       }
 
       Item {
