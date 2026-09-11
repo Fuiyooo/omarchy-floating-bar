@@ -21,6 +21,7 @@ BarWidget {
     tooltipText: "Floating Bar — settings & groups"
 
     onPressed: function (button) {
+      console.warn("PLUG btn pressed bar=" + typeof (root.bar && root.bar.run))
       if (button === Qt.LeftButton && root.bar)
         root.bar.run("omarchy-shell shell toggle dime.floating-bar")
     }

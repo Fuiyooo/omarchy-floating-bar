@@ -43,9 +43,11 @@ Item {
   function writeConfig(mutate) {
     if (!root.hasConfigWriter) {
       root.status = "config access unavailable"
+      console.warn("PLUG writeConfig: NO writer")
       return false
     }
     var ok = root.shell.mutateShellConfig(mutate)
+    console.warn("PLUG writeConfig result=" + ok)
     root.status = ok ? "saved" : "config write failed"
     statusTimer.restart()
     return ok
@@ -101,6 +103,9 @@ Item {
   }
 
   function open(payloadJson) {
+    console.warn("PLUG settings open:",
+      "shell=" + (typeof root.shell),
+      "mutate=" + (root.shell ? typeof root.shell.mutateShellConfig : "n/a"))
     opened = true
     root.status = ""
     root.draftGroups = ({})
