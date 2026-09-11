@@ -204,6 +204,27 @@ Item {
     return applyBarTree()
   }
 
+  // Moves a layout entry across sections (or within one). Draft group edits
+  // are cleared: each field immediately commits its value on edit, so stale
+  // index-keyed drafts would otherwise repaint the wrong rows after a move.
+  function moveEntry(fromSection, fromIndex, toSection, toIndex) {
+    if (!barTree || !Util.isPlainObject(barTree.layout)) return false
+    var fromList = Array.isArray(barTree.layout[fromSection]) ? barTree.layout[fromSection] : null
+    var toList = Array.isArray(barTree.layout[toSection]) ? barTree.layout[toSection] : null
+    if (!fromList || !toList) return false
+    if (fromIndex < 0 || fromIndex >= fromList.length) return false
+    if (toIndex < 0) toIndex = toList.length
+    if (fromSection === toSection && fromIndex === toIndex) return false
+
+    var entry = fromList.splice(fromIndex, 1)[0]
+    if (fromSection === toSection && fromIndex < toIndex) toIndex -= 1
+    if (toIndex < 0) toIndex = 0
+    if (toIndex > toList.length) toIndex = toList.length
+    toList.splice(toIndex, 0, entry)
+    draftGroups = ({})
+    return applyBarTree()
+  }
+
   function open(payloadJson) {
     console.warn("PLUG settings open")
     opened = true
@@ -389,108 +410,33 @@ Item {
 
           Item { width: 1; height: Style.spacing.sm }
 
+          Item { width: 1; height: Style.spacing.sm }
+
+          Text {
+            text: "DRAG ⋮⋮ widgets within/between sections — drop above another widget to slot in front of it. Empty group field = standalone."
+            wrapMode: Text.Wrap
+            width: card.implicitWidth - Style.spacing.panelPadding * 2
+            color: root.fgColor
+            opacity: 0.65
+            font.family: root.fontFamily
+            font.pixelSize: Style.font.caption
+          }
+
           Row {
             spacing: Style.spacing.panelGap
 
             Repeater {
               model: root.sections
 
-              Column {
-                id: pillSection
-
+              SectionColumn {
                 required property string modelData
-                readonly property string sectionName: modelData
-                readonly property var entries: {
-                  var layout = barTree && Util.isPlainObject(barTree.layout) ? barTree.layout : null
-                  return layout && Array.isArray(layout[sectionName]) ? layout[sectionName] : []
-                }
-
-                width: (card.implicitWidth - Style.spacing.panelPadding * 2 - Style.spacing.panelGap * 2) / 3
-
-                Text {
-                  text: pillSection.sectionName.toUpperCase()
-                  color: root.fgColor
-                  font.family: root.fontFamily
-                  font.pixelSize: Style.font.caption
-                  font.letterSpacing: 1.5
-                  opacity: 0.7
-                }
-
-                Repeater {
-                  model: pillSection.entries
-
-                  Column {
-                    required property var modelData
-                    required property int index
-
-                    width: parent.width
-                    spacing: Style.spacing.xxs
-
-                    Text {
-                      width: parent.width
-                      elide: Text.ElideMiddle
-                      maximumLineCount: 1
-                      text: (modelData && modelData.id) || "?"
-                      color: root.fgColor
-                      font.family: root.fontFamily
-                      font.pixelSize: Style.font.caption
-                    }
-
-                    GroupField {
-                      width: parent.width
-                      horizontalPadding: 6
-                      verticalPadding: 2
-                      font.pixelSize: Style.font.caption
-                      initialText: {
-                        var key = pillSection.sectionName + ":" + index
-                        return draftGroups[key] !== undefined
-                          ? draftGroups[key]
-                          : ((modelData && typeof modelData.group === "string") ? modelData.group : "")
-                      }
-                      placeholderText: "no group"
-                      enabled: root.opened
-                      onGroupCommitted: {
-                        var key = pillSection.sectionName + ":" + index
-                        var committedGroup = (modelData && typeof modelData.group === "string")
-                          ? modelData.group : ""
-                        var draft = root.draftGroups
-                        draft[key] = value
-                        root.draftGroups = draft
-                        // editingFinished also fires on focus loss; skip when the
-                        // value equals what is already committed so focus change
-                        // does not re-write identical config.
-                        if (value !== committedGroup)
-                          root.commitGroups()
-                      }
-                    }
-
-                    // Capsule colour, editable only once the entry carries a
-                    // committed group name (entries sharing a group edit the
-                    // same style key).
-                    ColorFieldRow {
-                      visible: !!modelData && typeof modelData.group === "string"
-                        && modelData.group.length > 0
-                      property string groupName: modelData ? (modelData.group || "") : ""
-                      hexValue: root.committedCapsuleColor(groupName)
-                      swatchColor: {
-                        var hex = root.committedCapsuleColor(groupName)
-                        if (hex !== "") { try { return Qt.color(hex) } catch (e) { } }
-                        return root.committedBarColorField("background") !== ""
-                          ? Qt.color(root.committedBarColorField("background"))
-                          : Color.bar.background
-                      }
-                      width: parent.width
-                      onCommitted: function (hex) {
-                        root.setCapsuleColor(groupName, hex)
-                      }
-                    }
-                  }
-                }
+                columnWidth: (card.implicitWidth - Style.spacing.panelPadding * 2 - Style.spacing.panelGap * 2) / 3
+                sectionName: modelData
               }
             }
           }
 
-          Text {
+          Item { width: 1; height: Style.spacing.sm }
             visible: root.status !== ""
             text: root.status
             color: root.fgColor
@@ -505,6 +451,210 @@ Item {
   // Numeric row: -/+ buttons plus a manually editable text field. The text
   // re-syncs with the committed value whenever the committed value object is
   // reassigned (every write swaps in a fresh clone).
+  // One bar layout section: header, horizontal drag drop zones, the entry
+  // rows, and a footer drop slot for appending.
+  component SectionColumn: Column {
+    id: pillSection
+
+    property real columnWidth: 0
+    property string sectionName: ""
+    readonly property var entries: {
+      var cfg = root.barTree
+      var layout = cfg && Util.isPlainObject(cfg.layout) ? cfg.layout : null
+      return layout && Array.isArray(layout[sectionName]) ? layout[sectionName] : []
+    }
+
+    width: columnWidth > 0 ? columnWidth : 150
+    spacing: Style.spacing.xs
+
+    Text {
+      text: pillSection.sectionName.toUpperCase()
+      color: root.fgColor
+      font.family: root.fontFamily
+      font.pixelSize: Style.font.caption
+      font.letterSpacing: 1.5
+      opacity: 0.7
+    }
+
+    Repeater {
+      model: pillSection.entries
+
+      EntryCell {
+        required property var modelData
+        required property int index
+        entryModel: modelData
+        entryIndex: index
+        owningSection: pillSection.sectionName
+      }
+    }
+
+    // Footer drop slot: append at the end of the section.
+    DropArea {
+      width: parent.width
+      height: Style.spacing.controlHeight
+      keys: ["dime-bar-entry"]
+
+      BorderSurface {
+        anchors.fill: parent
+        visible: parent.containsDrag
+        color: "transparent"
+        borderSpec: Border.flat(root.fgColor, 1)
+        radius: Style.space(4)
+      }
+
+      Text {
+        anchors.centerIn: parent
+        text: "drop to append"
+        color: root.fgColor
+        opacity: parent.containsDrag ? 0.9 : 0.3
+        font.family: root.fontFamily
+        font.pixelSize: Style.font.caption
+      }
+
+      onDropped: function (drag) {
+        var payload = drag.source && drag.source.dragPayload ? drag.source.dragPayload : null
+        if (payload) root.moveEntry(payload.fromSection, payload.fromIndex, pillSection.sectionName, -1)
+      }
+    }
+  }
+
+  component EntryCell: Item {
+    id: entryCell
+
+    property var entryModel: null
+    property int entryIndex: 0
+    property string owningSection: ""
+    readonly property var dragPayload: ({
+      fromSection: owningSection,
+      fromIndex: entryIndex
+    })
+    readonly property bool dragging: cellArea.drag.active
+    readonly property bool hasGroup: !!entryModel && typeof entryModel.group === "string"
+      && entryModel.group.length > 0
+
+    width: parent ? parent.width : 150
+    implicitHeight: cellCol.implicitHeight
+    height: cellCol.implicitHeight
+
+    DropArea {
+      anchors { fill: parent; margins: -Style.spacing.xxs }
+      keys: ["dime-bar-entry"]
+      onDropped: function (drag) {
+        var payload = drag.source && drag.source.dragPayload ? drag.source.dragPayload : null
+        if (payload)
+          root.moveEntry(payload.fromSection, payload.fromIndex, entryCell.owningSection, entryCell.entryIndex)
+      }
+    }
+
+    BorderSurface {
+      anchors.fill: cellCol
+      color: root.fgColor
+      opacity: entryCell.dragging ? 0.12 : 0.0
+      radius: Style.space(3)
+    }
+
+    Column {
+      id: cellCol
+
+      width: parent.width
+      spacing: Style.spacing.xxs
+
+      Row {
+        width: parent.width
+
+        Rectangle {
+          id: handle
+
+          width: Style.space(14)
+          height: Style.space(14)
+          radius: width / 2
+          color: entryCell.dragging ? Qt.rgba(0, 0, 0, 0.001) : "transparent"
+          border.width: 1
+          border.color: root.fgColor
+          opacity: 0.4
+          anchors.verticalCenter: parent.verticalCenter
+
+          MouseArea {
+            id: cellArea
+
+            width: Style.space(18)
+            height: Style.space(16)
+            acceptedButtons: Qt.LeftButton
+            cursorShape: Qt.DragMoveCursor
+            drag.target: entryCell
+            drag.axis: Drag.XAndYAxis
+            onPressed: entryCell.Drag.start()
+            onReleased: {
+              entryCell.x = 0
+              entryCell.y = 0
+              entryCell.Drag.drop()
+            }
+          }
+        }
+
+        Text {
+          width: parent.width - handle.width
+          elide: Text.ElideMiddle
+          maximumLineCount: 1
+          text: entryCell.entryId
+          color: root.fgColor
+          font.family: root.fontFamily
+          font.pixelSize: Style.font.caption
+          anchors.verticalCenter: parent.verticalCenter
+        }
+      }
+
+      GroupField {
+        width: parent.width
+        horizontalPadding: 6
+        verticalPadding: 2
+        font.pixelSize: Style.font.caption
+        initialText: {
+          var key = entryCell.owningSection + ":" + entryCell.entryIndex
+          return root.draftGroups[key] !== undefined
+            ? root.draftGroups[key]
+            : ((entryCell.entryModel && typeof entryCell.entryModel.group === "string")
+               ? entryCell.entryModel.group : "")
+        }
+        placeholderText: "no group"
+        onGroupCommitted: {
+          var key = entryCell.owningSection + ":" + entryCell.entryIndex
+          var committedGroup = entryCell.entryModel && typeof entryCell.entryModel.group === "string"
+            ? entryCell.entryModel.group : ""
+          var draft = root.draftGroups
+          draft[key] = value
+          root.draftGroups = draft
+          // editingFinished also fires on focus loss; skip when the value
+          // equals what is already committed so refocusing does not re-write
+          // identical config.
+          if (value !== committedGroup) root.commitGroups()
+        }
+      }
+
+      ColorFieldRow {
+        visible: entryCell.hasGroup
+        property string groupName: entryCell.entryModel && typeof entryCell.entryModel.group === "string"
+          ? entryCell.entryModel.group : ""
+        hexValue: root.committedCapsuleColor(groupName)
+        swatchColor: {
+          var hex = root.committedCapsuleColor(groupName)
+          if (hex !== "") { try { return Qt.color(hex) } catch (e) { } }
+          return root.committedBarColorField("background") !== ""
+            ? Qt.color(root.committedBarColorField("background"))
+            : Color.bar.background
+        }
+        width: parent.width
+        onCommitted: function (hex) { root.setCapsuleColor(groupName, hex) }
+      }
+    }
+
+    // Strip the visual drag offset the moment the drop resolves (or not):
+    // the data model rebuild re-positions everything anyway.
+    Drag.active: entryCell.dragging
+    Drag.dragType: Drag.Automatic
+    Drag.keys: ["dime-bar-entry"]
+  }
+
   component NumberStepper: Row {
     id: stepper
 
