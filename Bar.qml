@@ -56,7 +56,9 @@ Item {
   // Floating-bar look: the surface is inset from the screen edges and paints
   // its own rounded backdrop instead of stretching edge to edge.
   property int floatingMargin: Style.space(9)
-  readonly property real pillRadius: Math.max(6, Math.min(Style.cornerRadius, 12))
+  // Corner rounding, in pixels. Stock look is 0 (squared, like the default
+  // Omarchy bar) no matter whether floating is on; the settings panel raises it.
+  property int pillRadius: 0
   readonly property int pillGap: Style.space(4)
   readonly property int pillPadding: Style.space(9)
   // Feature switches, driven from the `bar:` subtree in shell.json:
@@ -606,6 +608,10 @@ Item {
       ? Math.round(gap) : Style.space(9))
     var capsules = Util.isPlainObject(config.capsules) ? config.capsules : null
     capsulesOn = !capsules || capsules.enabled !== false
+    var corners = Util.isPlainObject(config.corners) ? config.corners : null
+    var radius = Number(corners && corners.radius !== undefined ? corners.radius : NaN)
+    pillRadius = corners && isFinite(radius) && radius > 0
+      ? Math.min(18, Math.round(radius)) : 0
 
     // layoutEntries feeds plain JS arrays to the module Repeaters, and QML
     // cannot diff those: reassigning layoutConfig rebuilds every widget on
@@ -1852,7 +1858,9 @@ Item {
       anchors.fill: parent
       visible: pill.grouped && !root.transparent
       color: root.background
-      radius: Math.min(pill.width, pill.height) / 2
+      radius: root.pillRadius > 0
+        ? Math.min(root.pillRadius, Math.min(pill.width, pill.height) / 2)
+        : 0
     }
 
     Loader {

@@ -118,6 +118,17 @@ Item {
     return applyBarTree()
   }
 
+  readonly property int cornerRadius: barTree && Util.isPlainObject(barTree.corners)
+    && barTree.corners.radius !== undefined ? Math.round(Number(barTree.corners.radius)) : 0
+
+  function setRadius(radius) {
+    if (!barTree) return false
+    var n = Math.max(0, Math.min(18, Math.round(radius)))
+    if (!Util.isPlainObject(barTree.corners)) barTree.corners = {}
+    barTree.corners.radius = n
+    return applyBarTree()
+  }
+
   function setCapsules(on) {
     if (!barTree) return false
     if (!Util.isPlainObject(barTree.capsules)) barTree.capsules = {}
@@ -297,6 +308,34 @@ Item {
               color: root.fgColor
               font.family: root.fontFamily
               font.pixelSize: Style.font.body
+            }
+          }
+
+          // ---------- Corner rounding row
+          Row {
+            spacing: Style.spacing.lg
+
+            Text {
+              anchors.verticalCenter: parent.verticalCenter
+              text: "Rounded corners"
+              color: root.fgColor
+              font.family: root.fontFamily
+              font.pixelSize: Style.font.body
+            }
+
+            Row {
+              spacing: Style.spacing.sm
+              anchors.verticalCenter: parent.verticalCenter
+
+              Button { text: "-"; onClicked: root.setRadius(root.cornerRadius - 1) }
+              Text {
+                anchors.verticalCenter: parent.verticalCenter
+                text: root.cornerRadius + "px"
+                color: root.fgColor
+                font.family: root.fontFamily
+                font.pixelSize: Style.font.body
+              }
+              Button { text: "+"; onClicked: root.setRadius(root.cornerRadius + 1) }
             }
           }
 
