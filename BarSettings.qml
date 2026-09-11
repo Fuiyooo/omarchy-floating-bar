@@ -41,23 +41,42 @@ Item {
   // editor rows. Applied en-masse by Apply groups.
   property var draftGroups: ({})
 
-  FileView {
-    id: configView
+  // Fresh read of shell.json through the plugin helper (synchronous through
+  // the Process stdout collector), because an under-load FileView returns
+  // empty text and a stale panel snapshot would clobber the whole bar tree.
+  readonly property string pluginDir: String(Qt.resolvedUrl(".")).replace("file://", "").replace(/\/$/, "/")
 
-    path: Quickshell.env("HOME") + "/.config/omarchy/shell.json"
-    printErrors: false
+  Process {
+    id: readProc
+
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: root.seedFromReply(text)
+    }
+  }
+
+  function seedFromReply(raw) {
+    var parsed = null
+    try { parsed = JSON.parse(String(raw)) } catch (e) { parsed = null }
+    if (!parsed || parsed.ok !== true) {
+      root.status = "failed: " + (parsed && parsed.error ? parsed.error : "config read")
+      statusTimer.restart()
+      return
+    }
+    var cfg = Util.isPlainObject(parsed.config) ? parsed.config : {}
+    var bar = Util.isPlainObject(cfg.bar) ? cfg.bar : {}
+    barTree = JSON.parse(JSON.stringify(bar))
+    draftGroups = ({})
+    if (!Util.isPlainObject(barTree.layout))
+      barTree.layout = { left: [], center: [], right: [] }
+    for (var i = 0; i < root.sections.length; i++)
+      if (!Array.isArray(barTree.layout[root.sections[i]]))
+        barTree.layout[root.sections[i]] = []
   }
 
   function seedBarTree() {
-    configView.reload()
-    var text = ""
-    try { text = configView.text() } catch (e) { text = "" }
-    var parsed = null
-    try { parsed = JSON.parse(text) } catch (e) { parsed = null }
-    var bar = parsed && Util.isPlainObject(parsed.bar) ? parsed.bar : {}
-    barTree = JSON.parse(JSON.stringify(bar))
-    draftGroups = ({})
-    if (!Util.isPlainObject(barTree.layout)) barTree.layout = { left: [], center: [], right: [] }
+    readProc.command = ["python3", root.pluginDir + "config-apply.py", "read"]
+    readProc.running = true
   }
 
   function applyBarTree() {
