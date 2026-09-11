@@ -77,6 +77,28 @@ Item {
     if (idx !== -1) list.splice(idx, 1)
   }
 
+  function allGroups() {
+    var out = []
+    var layout = barTree && Util.isPlainObject(barTree.layout) ? barTree.layout : null
+    if (layout) {
+      for (var i = 0; i < root.sections.length; i++) {
+        var list = Array.isArray(layout[root.sections[i]]) ? layout[root.sections[i]] : []
+        for (var j = 0; j < list.length; j++) {
+          var entry = list[j]
+          var grp = entry && typeof entry.group === "string" ? entry.group : ""
+          if (grp.length > 0 && out.indexOf(grp) === -1) out.push(grp)
+        }
+      }
+    }
+    return out
+  }
+
+  function capsulePreviewColor(groupName, fallback) {
+    var hex = root.committedCapsuleColor(groupName)
+    if (hex !== "") { try { return Qt.color(hex) } catch (e) { } }
+    return fallback
+  }
+
   function capsuleFill() {
     var hex = root.committedBarColorField("background")
     if (hex !== "") { try { return Qt.color(hex) } catch (e) { } }
@@ -594,6 +616,57 @@ Item {
 
           Item { width: 1; height: Style.spacing.sm }
 
+          // ---------- Capsule colour editor (separate from the drag cards)
+          Item { width: 1; height: Style.spacing.xs }
+
+          Text {
+            text: "CAPSULE COLOURS"
+            color: root.fgColor
+            font.family: root.fontFamily
+            font.pixelSize: Style.font.caption
+            font.letterSpacing: 1.5
+            opacity: 0.7
+          }
+
+          Repeater {
+            model: root.allGroups()
+
+            Row {
+              required property string modelData
+              spacing: Style.spacing.sm
+
+              Text {
+                width: 110
+                elide: Text.ElideMiddle
+                maximumLineCount: 1
+                text: modelData
+                color: root.fgColor
+                font.family: root.fontFamily
+                font.pixelSize: Style.font.caption
+                anchors.verticalCenter: parent.verticalCenter
+              }
+
+              ColorFieldRow {
+                property string grp: modelData
+                hexValue: root.committedCapsuleColor(modelData)
+                swatchColor: root.capsulePreviewColor(modelData, root.fgColor)
+                onCommitted: function (hex) { root.setCapsuleColor(modelData, hex) }
+              }
+            }
+          }
+
+          Item { width: 1; height: Style.spacing.lg }
+
+          Text {
+            text: "CAPSULE items sharing a group render in one capsule; ungrouped widgets float as single capsules when the full bar background is off."
+            wrapMode: Text.Wrap
+            width: card.implicitWidth - Style.spacing.panelPadding * 2
+            color: root.fgColor
+            opacity: 0.55
+            font.family: root.fontFamily
+            font.pixelSize: Style.font.caption
+          }
+
           Text {
             visible: root.status !== ""
             text: root.status
@@ -695,130 +768,86 @@ Item {
       && root.dragHoverSection === owningSection && root.dragHoverIndex === entryIndex
 
     width: parent ? parent.width : 150
-    implicitHeight: cellCol.implicitHeight
-    height: cellCol.implicitHeight
+    implicitHeight: 21
+    height: 21
     opacity: dragging ? 0.45 : 1.0
 
 
-    Column {
-      id: cellCol
+    Rectangle {
+      id: cardFrame
 
       width: parent.width
-      spacing: Style.spacing.xxs
+      height: 21
+      radius: 5
+      border.width: entryCell.hovered ? 2 : 1
+      border.color: root.fgColor
+      color: entryCell.hasGroup
+        ? Qt.rgba(capsuleFill().r, capsuleFill().g, capsuleFill().b, 0.16)
+        : "transparent"
 
-      // Small card: handle + capsule swatch + readable text label, so each
-      // widget is recognised at a glance (and stays obvious while dragging).
-      BorderSurface {
-        width: parent.width
-        height: Style.space(20)
-        color: entryCell.hasGroup
-          ? Qt.rgba(capsuleFill().r, capsuleFill().g, capsuleFill().b, 0.18)
-          : "transparent"
-        borderSpec: Border.flat(root.fgColor, entryCell.hovered ? 2 : 1)
-        radius: Style.space(5)
-        opacity: 1
+      Item {
+        id: handle
 
-        Row {
-          x: Style.space(4)
-          anchors.verticalCenter: parent.verticalCenter
+        x: 4
+        width: 18
+        height: 20
 
-          Item {
-            id: handle
+        Text {
+          anchors.centerIn: parent
+          text: "⋮⋮"
+          color: root.fgColor
+          opacity: 0.55
+          font.family: root.fontFamily
+          font.pixelSize: Style.font.caption
+        }
 
-            width: Style.space(16)
-            height: Style.space(14)
+        MouseArea {
+          id: cellArea
 
-            Text {
-              anchors.centerIn: parent
-              text: "⋮⋮"
-              color: root.fgColor
-              opacity: 0.55
-              font.family: root.fontFamily
-              font.pixelSize: Style.font.caption
-            }
-
-            MouseArea {
-              id: cellArea
-
-              anchors.fill: parent
-              acceptedButtons: Qt.LeftButton
-              cursorShape: Qt.DragMoveCursor
-              onPressed: root.startDrag(entryCell)
-              onPositionChanged: function (mouse) {
-                if (!entryCell.dragging) return
-                var scene = mapToItem(null, mouse.x + width / 2, mouse.y + height / 2)
-                root.updateDragHover(scene)
-              }
-              onReleased: root.finishDrag()
-              onCanceled: root.finishDrag()
-            }
+          anchors.fill: parent
+          acceptedButtons: Qt.LeftButton
+          cursorShape: Qt.DragMoveCursor
+          onPressed: root.startDrag(entryCell)
+          onPositionChanged: function (mouse) {
+            if (!entryCell.dragging) return
+            var scene = mapToItem(null, mouse.x + width / 2, mouse.y + height / 2)
+            root.updateDragHover(scene)
           }
-
-          Rectangle {
-            width: Style.space(7)
-            height: Style.space(7)
-            radius: width / 2
-            anchors.verticalCenter: parent.verticalCenter
-            visible: entryCell.hasGroup
-            color: {
-              var hex = root.committedCapsuleColor(entryCell.entryModel ? entryCell.entryModel.group : "")
-              if (hex !== "") { try { return Qt.color(hex) } catch (e) { } }
-              return root.capsuleFill()
-            }
-          }
-
-          Text {
-            anchors.verticalCenter: parent.verticalCenter
-            text: root.shortWidgetId(entryCell.entryId)
-            color: root.fgColor
-            font.family: root.fontFamily
-            font.pixelSize: Style.font.bodySmall
-            font.bold: true
-          }
+          onReleased: root.finishDrag()
+          onCanceled: root.finishDrag()
         }
       }
 
-      GroupField {
-        width: parent.width
-        horizontalPadding: 6
-        verticalPadding: 2
-        font.pixelSize: Style.font.caption
-        initialText: {
-          var key = entryCell.owningSection + ":" + entryCell.entryIndex
-          return root.draftGroups[key] !== undefined
-            ? root.draftGroups[key]
-            : ((entryCell.entryModel && typeof entryCell.entryModel.group === "string")
-               ? entryCell.entryModel.group : "")
-        }
-        placeholderText: "no group"
-        onGroupCommitted: {
-          var key = entryCell.owningSection + ":" + entryCell.entryIndex
-          var committedGroup = entryCell.entryModel && typeof entryCell.entryModel.group === "string"
-            ? entryCell.entryModel.group : ""
-          var draft = root.draftGroups
-          draft[key] = value
-          root.draftGroups = draft
-          // editingFinished also fires on focus loss; skip when the value
-          // equals what is already committed so refocusing does not re-write
-          // identical config.
-          if (value !== committedGroup) root.commitGroups()
-        }
-      }
-
-      ColorFieldRow {
+      Rectangle {
+        x: 26
+        width: 8
+        height: 8
+        radius: 4
+        y: 6
         visible: entryCell.hasGroup
-        property string groupName: entryCell.entryModel && typeof entryCell.entryModel.group === "string"
-          ? entryCell.entryModel.group : ""
-        hexValue: root.committedCapsuleColor(groupName)
-        swatchColor: {
-          var hex = root.committedCapsuleColor(groupName)
+        color: {
+          var grp = entryCell.entryModel && typeof entryCell.entryModel.group === "string"
+            ? entryCell.entryModel.group : ""
+          var hex = root.committedCapsuleColor(grp)
           if (hex !== "") { try { return Qt.color(hex) } catch (e) { } }
-          return root.committedBarColorField("background") !== ""
-            ? Qt.color(root.committedBarColorField("background"))
-            : Color.bar.background
+          return root.fgColor
         }
-        width: parent.width
-        onCommitted: function (hex) { root.setCapsuleColor(groupName, hex) }
+      }
+
+      Text {
+        x: 38
+        width: parent.width - 42
+        anchors.verticalCenter: parent.verticalCenter
+        text: root.shortWidgetId(entryCell.entryId)
+        color: root.fgColor
+        font.family: root.fontFamily
+        font.pixelSize: Style.font.bodySmall
+        font.bold: true
+      }
+
+      Item {
+        // keeps the clickable handle above the label row in stacking order
+        z: 2
       }
     }
 

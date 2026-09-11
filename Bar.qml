@@ -1879,7 +1879,11 @@ Item {
 
     property var segment
     property string region: ""
-    readonly property bool grouped: root.capsulesOn && segment && segment.group !== ""
+    // With the full backdrop on, only explicit groups render capsules.
+    // With it off (noctalia style) every segment gets its own chip, so
+    // standalone widgets float as independent pills.
+    readonly property bool grouped: root.capsulesOn && segment
+      && (root.backdropOn || segment.group !== "")
     readonly property real pad: grouped ? root.pillPadding : 0
 
     // Painted first so the capsule backdrop stays UNDER the widget content.
