@@ -198,10 +198,6 @@ BarWidget {
     visible: !root.vertical
     spacing: 0
 
-    HoverHandler {
-      onHoveredChanged: root.setIndicatorAreaHovered(hovered)
-    }
-
     Item {
       id: inactiveHorizontalArea
 
@@ -219,10 +215,6 @@ BarWidget {
         indicatorBlock: "inactive"
         horizontal: true
         reportActiveState: !root.vertical
-      }
-
-      HoverHandler {
-        onHoveredChanged: root.setIndicatorAreaHovered(hovered)
       }
     }
 
@@ -243,10 +235,6 @@ BarWidget {
         horizontal: true
         reportActiveState: !root.vertical
       }
-
-      HoverHandler {
-        onHoveredChanged: root.setIndicatorAreaHovered(hovered)
-      }
     }
 
     Item {
@@ -264,10 +252,6 @@ BarWidget {
         anchors.centerIn: parent
         text: "\uf053"
       }
-
-      HoverHandler {
-        onHoveredChanged: root.setIndicatorAreaHovered(hovered)
-      }
     }
   }
 
@@ -276,10 +260,6 @@ BarWidget {
 
     visible: root.vertical
     spacing: 0
-
-    HoverHandler {
-      onHoveredChanged: root.setIndicatorAreaHovered(hovered)
-    }
 
     Item {
       id: inactiveVerticalArea
@@ -298,10 +278,6 @@ BarWidget {
         indicatorBlock: "inactive"
         horizontal: false
         reportActiveState: root.vertical
-      }
-
-      HoverHandler {
-        onHoveredChanged: root.setIndicatorAreaHovered(hovered)
       }
     }
 
@@ -322,10 +298,6 @@ BarWidget {
         horizontal: false
         reportActiveState: root.vertical
       }
-
-      HoverHandler {
-        onHoveredChanged: root.setIndicatorAreaHovered(hovered)
-      }
     }
 
     Item {
@@ -342,10 +314,6 @@ BarWidget {
         bar: root.bar
         anchors.centerIn: parent
         text: "\uf077"
-      }
-
-      HoverHandler {
-        onHoveredChanged: root.setIndicatorAreaHovered(hovered)
       }
     }
   }
