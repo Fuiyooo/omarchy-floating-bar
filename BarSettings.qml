@@ -845,32 +845,45 @@ Item {
           }
         }
 
-        Rectangle {
+        Item {
           width: 7
           height: 7
-          radius: 3.5
           anchors.verticalCenter: parent.verticalCenter
-          visible: entryCell.hasGroup
-          color: {
-            var hex = root.committedCapsuleColor(entryCell.entryModel
-              && typeof entryCell.entryModel.group === "string" ? entryCell.entryModel.group : "")
-            if (hex !== "") { try { return Qt.color(hex) } catch (e) { } }
-            return root.capsuleFill()
+
+          Rectangle {
+            width: 7
+            height: 7
+            radius: 3.5
+            anchors.verticalCenter: parent.verticalCenter
+            visible: entryCell.hasGroup
+            color: {
+              var hex = root.committedCapsuleColor(entryCell.entryModel
+                && typeof entryCell.entryModel.group === "string" ? entryCell.entryModel.group : "")
+              if (hex !== "") { try { return Qt.color(hex) } catch (e) { } }
+              return root.capsuleFill()
+            }
+          }
+        }
+
+        Item {
+          width: 14
+          height: 16
+          anchors.verticalCenter: parent.verticalCenter
+
+          Text {
+            anchors.left: parent.left
+            anchors.verticalCenter: parent.verticalCenter
+            text: root.widgetIcon(entryCell.entryId) || "·"
+            color: root.fgColor
+            opacity: 0.85
+            font.family: root.fontFamily
+            font.pixelSize: Style.font.caption
           }
         }
 
         Text {
           anchors.verticalCenter: parent.verticalCenter
-          text: root.widgetIcon(entryCell.entryId) || "·"
-          color: root.fgColor
-          opacity: 0.85
-          font.family: root.fontFamily
-          font.pixelSize: Style.font.caption
-        }
-
-        Text {
-          anchors.verticalCenter: parent.verticalCenter
-          width: Math.max(0, cardFrame.width - 74)
+          width: Math.max(0, cardFrame.width - 58)
           elide: Text.ElideRight
           maximumLineCount: 1
           text: root.shortWidgetId(entryCell.entryId)
