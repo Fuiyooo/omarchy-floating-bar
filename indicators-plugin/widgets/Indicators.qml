@@ -167,11 +167,11 @@ BarWidget {
   onIndicatorEntriesChanged: syncActiveIndicatorOrder()
 
   implicitWidth: root.vertical
-    ? Math.max(activeVerticalArea.implicitWidth, inactiveVerticalArea.implicitWidth)
-    : activeHorizontalArea.implicitWidth + inactiveHorizontalArea.implicitWidth
+    ? Math.max(activeVerticalArea.implicitWidth, Math.max(inactiveVerticalArea.implicitWidth, collapseAreaVertical.implicitWidth))
+    : activeHorizontalArea.implicitWidth + inactiveHorizontalArea.implicitWidth + collapseAreaHorizontal.implicitWidth
   implicitHeight: root.vertical
-    ? activeVerticalArea.implicitHeight + inactiveVerticalArea.implicitHeight
-    : Math.max(activeHorizontalArea.implicitHeight, inactiveHorizontalArea.implicitHeight)
+    ? activeVerticalArea.implicitHeight + inactiveVerticalArea.implicitHeight + collapseAreaVertical.implicitHeight
+    : Math.max(activeHorizontalArea.implicitHeight, Math.max(inactiveHorizontalArea.implicitHeight, collapseAreaHorizontal.implicitHeight))
 
   IpcHandler {
     target: "dime.indicators"
@@ -248,6 +248,27 @@ BarWidget {
         onHoveredChanged: root.setIndicatorAreaHovered(hovered)
       }
     }
+
+    Item {
+      id: collapseAreaHorizontal
+
+      implicitWidth: root.indicatorsPeek ? 0 : root.barSize
+      implicitHeight: root.barSize
+      width: implicitWidth
+      height: implicitHeight
+      clip: true
+
+      BarIconButton {
+        id: collapseChipHorizontal
+        bar: root.bar
+        anchors.centerIn: parent
+        text: "\uf053"
+      }
+
+      HoverHandler {
+        onHoveredChanged: root.setIndicatorAreaHovered(hovered)
+      }
+    }
   }
 
   Column {
@@ -300,6 +321,27 @@ BarWidget {
         indicatorModel: activeIndicatorModel
         horizontal: false
         reportActiveState: root.vertical
+      }
+
+      HoverHandler {
+        onHoveredChanged: root.setIndicatorAreaHovered(hovered)
+      }
+    }
+
+    Item {
+      id: collapseAreaVertical
+
+      implicitWidth: root.barSize
+      implicitHeight: root.indicatorsPeek ? 0 : root.barSize
+      width: implicitWidth
+      height: implicitHeight
+      clip: true
+
+      BarIconButton {
+        id: collapseChipVertical
+        bar: root.bar
+        anchors.centerIn: parent
+        text: "\uf077"
       }
 
       HoverHandler {
