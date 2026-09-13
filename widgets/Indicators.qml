@@ -15,15 +15,15 @@ BarWidget {
   property bool indicatorAreaHovered: false
   property bool indicatorItemHovered: false
   readonly property bool alwaysShowIndicators: setting("alwaysShow", false) === true
-  // The whole block extends LEFT of the clock while the centre-anchor (clock)
-  // slot is hovered, and stays while the pointer is on the widget itself.
-  // Relying on a precise mouse-over of the widget for the open gesture would
-  // collapse the block as soon as the pointer drifts after a click, which read
-  // as the buttons "disappearing".
+  // The indicators open only while the pointer is on the widget itself (its
+  // own collapsed tray chip or the revealed block), exactly like the system
+  // tray. Nothing else on the bar can open them.
   readonly property bool indicatorsPeek: alwaysShowIndicators
     || indicatorAreaHovered
     || indicatorItemHovered
-    || (bar && bar.centerSectionRevealHeld === true && bar.centerHoverRevealSuppressed !== true)
+  // The host BarIndicator still asks its host for the legacy name to control
+  // opacity of the inactive buttons (0.45 when revealed); keep an alias.
+  readonly property bool revealInactiveIndicators: indicatorsPeek
 
   signal refreshRequested()
 

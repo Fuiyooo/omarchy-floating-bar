@@ -106,7 +106,6 @@ Item {
   // Bar palette overrides (`bar.colors.background` / `.text`).
   property string barColorOverride: ""
   property string barTextOverride: ""
-  property bool centerSectionHovered: false
   // One bar surface exists per monitor and each reports into this count, so a
   // pointer crossing from one monitor's bar to another's stays counted however
   // the enter and leave interleave. A single shared bool would be left false by
@@ -114,7 +113,6 @@ Item {
   property int barHoverCount: 0
   // True while the pointer is over any bar, widgets included.
   readonly property bool barHovered: barHoverCount > 0
-  property bool centerSectionRevealHeld: false
   property bool centerHoverRevealSuppressed: false
   property int barConfigSerial: 0
   property string position: "top"
@@ -130,6 +128,11 @@ Item {
   property color transparentForeground: Color.bar.text
   property color foreground: themeForeground
   property color barForeground: useTransparentForeground ? transparentForeground : themeForeground
+  // Legacy/chrome alias: WidgetButton-based icons read `bar.n` for their
+  // foreground; first-party widgets that get this root as their `bar` rely on
+  // it. Without it their glyph color resolves invalid and the button renders
+  // invisibly. Mirrors the chrome bar's `property color n`.
+  property color n: barForeground
   property bool foregroundAnimationEnabled: true
   property color background: root.barColorOverride !== ""
     ? root.barColorOverride : Color.bar.background
@@ -175,7 +178,10 @@ Item {
 
   Component {
     id: pluginBarApiComponent
-    PluginBarApi { }
+    PluginBarApi {
+      // `bar.n` legacy foreground (WidgetButton reads it over barForeground).
+      property color n: root.barForeground
+    }
   }
 
   function publicLayoutConfig() {
@@ -194,7 +200,6 @@ Item {
     api.barSize = Qt.binding(function() { return root.barSize })
     api.transparent = Qt.binding(function() { return root.transparent })
     api.foregroundAnimationEnabled = Qt.binding(function() { return root.foregroundAnimationEnabled })
-    api.centerSectionRevealHeld = Qt.binding(function() { return root.centerSectionRevealHeld })
     api._centerHoverRevealSuppressed = Qt.binding(function() { return root.centerHoverRevealSuppressed })
     root.syncPluginBarApiObjects(api)
   }
@@ -895,37 +900,12 @@ Item {
 
   Component.onCompleted: applyBarConfig()
 
-  // Revealing the indicators widens their section, which can slide a neighbour
-  // under a stationary pointer. Collapsing on that un-hover would move it back
-  // out and re-open the peek, so hold until the pointer leaves the clock slot
-  // (the center anchor); the widget keeps itself revealed while pointed at.
-  function setCenterSectionHovered(hovered) {
-    centerSectionHovered = hovered
-    if (hovered) {
-      centerSectionRevealTimer.stop()
-      centerSectionRevealHeld = true
-    } else {
-      centerSectionRevealTimer.restart()
-    }
-  }
-
   function setBarHovered(hovered) {
     barHoverCount = Math.max(0, barHoverCount + (hovered ? 1 : -1))
-    if (barHoverCount === 0) centerSectionRevealTimer.restart()
   }
 
   function setCenterHoverRevealSuppressed(value) {
     centerHoverRevealSuppressed = !!value
-  }
-
-  Timer {
-    id: centerSectionRevealTimer
-    interval: 180
-    // Collapse only. Opening the peek is the center anchor (clock) slot's own
-    // gesture, done in setCenterSectionHovered, so a timer left pending by a
-    // pointer that dipped off and came back cannot reveal indicators it never
-    // pointed at.
-    onTriggered: if (!root.centerSectionHovered) root.centerSectionRevealHeld = false
   }
 
   function run(command) {
@@ -2070,15 +2050,25 @@ Item {
       if (hint !== undefined && hint !== null && hint > 0) return Math.round(hint)
       return Math.max(Style.space(10), Math.round((root.vertical ? slot.height : slot.width) * 0.55))
     }
+    // A module that hides itself (e.g. system-update with no update pending
+    // sets `visible:false`) contributes nothing; implicitWidth alone would keep
+    // a ghost chip: the item is invisible but still reports button size.
+    readonly property bool itemPainted: {
+      var _ = root.moduleShapeRevision
+      var it = activeItem
+      return !!it && it.visible !== false
+    }
     implicitWidth: {
       var _ = root.moduleShapeRevision
-      return activeItem && (activeItem.implicitWidth > 0 || activeItem.implicitHeight > 0)
-        ? (root.vertical ? root.barSize : activeItem.implicitWidth) : 0
+      var it = activeItem
+      return slot.itemPainted && (it.implicitWidth > 0 || it.implicitHeight > 0)
+        ? (root.vertical ? root.barSize : it.implicitWidth) : 0
     }
     implicitHeight: {
       var _ = root.moduleShapeRevision
-      return activeItem && (activeItem.implicitWidth > 0 || activeItem.implicitHeight > 0)
-        ? activeItem.implicitHeight : 0
+      var it = activeItem
+      return slot.itemPainted && (it.implicitWidth > 0 || it.implicitHeight > 0)
+        ? it.implicitHeight : 0
     }
     // Whether the module paints anything at all. Capsules stay hidden while
     // every module in their segment renders zero size (inactive indicators,
@@ -2086,7 +2076,7 @@ Item {
     readonly property bool hasVisibleContent: {
       var _ = root.moduleShapeRevision
       var it = activeItem
-      return !!it && (it.implicitWidth > 0 || it.implicitHeight > 0)
+      return slot.itemPainted && (it.implicitWidth > 0 || it.implicitHeight > 0)
     }
 
     Connections {
@@ -2106,11 +2096,6 @@ Item {
 
     HoverHandler {
       id: moduleHover
-
-      onHoveredChanged: {
-        if (root.centerAnchor !== "" && slot.moduleName === root.centerAnchor)
-          root.setCenterSectionHovered(hovered)
-      }
     }
 
     BorderSurface {
