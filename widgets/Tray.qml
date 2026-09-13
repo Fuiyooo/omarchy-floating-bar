@@ -9,7 +9,50 @@ import "TrayModel.js" as TrayModel
 
 BarWidget {
   id: root
-  moduleName: "omarchy.tray"
+  moduleName: "dime.tray"
+
+  // Item reactivity guard. The shared status-notifier singleton populates
+  // *after* the bar mounts at startup; historically that late insert never
+  // woke the item bindings, so the tray stayed empty until a layout rebuild
+  // (a cursor-visible mode toggle) recreated the widget. Every mutator event
+  // and a startup watchdog bump this counter, forcing bucket() to re-read
+  // SystemTray.items.values and the widths to recompute.
+  property int trayTick: 0
+  property int syncBumps: 0
+  property int lastLoggedItems: -1
+
+  function refreshItems() {
+    root.trayTick = root.trayTick + 1
+    if (!SystemTray.items) return
+    var count = SystemTray.items.values.length
+    if (count !== root.lastLoggedItems) {
+      root.lastLoggedItems = count
+      console.warn("PLUG tray items", count)
+    }
+  }
+
+  // Notify may race the widget's first binding evaluation, so also listen to
+  // object insertion/removal directly on the shared model.
+  Connections {
+    target: SystemTray.items
+    function onValuesChanged() { root.refreshItems() }
+    function onObjectInsertedPost() { root.refreshItems() }
+    function onObjectRemovedPost() { root.refreshItems() }
+  }
+
+  Timer {
+    id: traySyncTimer
+    interval: 1500
+    repeat: true
+    running: true
+    onTriggered: {
+      root.syncBumps++
+      root.refreshItems()
+      if (root.syncBumps >= 10) traySyncTimer.stop()
+    }
+  }
+
+  Component.onCompleted: root.refreshItems()
 
   property bool expanded: false
   property bool managePopupOpen: false
@@ -20,9 +63,9 @@ BarWidget {
   readonly property string fontFamily: bar ? bar.fontFamily : Style.font.family
   readonly property var pinnedIds: settings.pinned instanceof Array ? settings.pinned : []
   readonly property var hiddenIds: settings.hidden instanceof Array ? settings.hidden : []
-  readonly property var pinnedItems: bucket("pinned")
-  readonly property var drawerItems: bucket("drawer")
-  readonly property var allItems: bucket("all")
+  readonly property var pinnedItems: root.trayTick >= 0 ? bucket("pinned") : []
+  readonly property var drawerItems: root.trayTick >= 0 ? bucket("drawer") : []
+  readonly property var allItems: root.trayTick >= 0 ? bucket("all") : []
   readonly property int drawerCount: drawerItems.length
   readonly property int trayItemExtent: Style.bar.iconSlot
   readonly property int trayItemGap: 0

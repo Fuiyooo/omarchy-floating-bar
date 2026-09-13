@@ -26,9 +26,34 @@ Item {
   // Injected by the host shell. Used for shell-wide actions such as opening
   // settings and persisting inline widget state.
   property var shell: null
-  // Diagnostics switch: OMARCHY_PLUG_DEBUG=1 turns on verbose interaction
-  // logs. Nothing is logged in normal runs.
-  readonly property bool plugDebug: Quickshell.env("OMARCHY_PLUG_DEBUG") === "1"
+  // Diagnostics switch: the flag file ~/.local/state/omarchy/plugins/
+  // dime.floating-bar/debug turns on verbose interaction logs; the legacy
+  // OMARCHY_PLUG_DEBUG=1 env still works, though the Hyprland-spawned shell
+  // rarely inherits a caller's env, so the file is the reliable path.
+  property bool plugDebugFile: false
+  readonly property bool plugDebug:
+    Quickshell.env("OMARCHY_PLUG_DEBUG") === "1" || plugDebugFile
+
+  Process {
+    id: debugFlagProbe
+
+    running: true
+    command: [ "bash", "-c", "[[ -f $HOME/.local/state/omarchy/plugins/dime.floating-bar/debug ]] && echo yes || echo no" ]
+    stdout: SplitParser {
+      onRead: function(line) {
+        var flag = String(line).trim() === "yes"
+        console.warn("PLUG debugSwitch=" + (flag ? "file-on" : "file-off"))
+        root.plugDebugFile = flag
+      }
+    }
+  }
+
+  FileView {
+    path: root.home + "/.local/state/omarchy/plugins/dime.floating-bar"
+    watchChanges: true
+    printErrors: false
+    onFileChanged: debugFlagProbe.running = true
+  }
 
   function dbg() {
     if (!plugDebug) return
@@ -76,8 +101,6 @@ Item {
   //   capsules.enabled — group fields render as fully-rounded capsules
   property bool floatingOn: true
   property bool capsulesOn: false
-  // Full-width backdrop switch (capsules.backdrop; false = bare capsules).
-  property bool backdropOn: true
   // Per-group capsule paint, from `capsules.styles`: name -> {color: "#hex"}.
   property var capsuleStyles: ({})
   // Bar palette overrides (`bar.colors.background` / `.text`).
@@ -143,6 +166,12 @@ Item {
   property var moduleSlots: []
   property var pluginBarApis: ({})
   property var pluginObjectOwners: []
+  // Widget internals size themselves from data that arrives after mount (a
+  // system tray populating, a backend coming online). Reading a child's
+  // implicitWidth from inside a binding is not a QML dependency, so capsule
+  // holes would never re-open; slots watch the item's geometry notify and bump
+  // this counter to force a size re-scan of the affected capsule content.
+  property int moduleShapeRevision: 0
 
   Component {
     id: pluginBarApiComponent
@@ -631,7 +660,6 @@ Item {
     var radius = Number(corners && corners.radius !== undefined ? corners.radius : NaN)
     pillRadius = corners && isFinite(radius) && radius > 0
       ? Math.min(18, Math.round(radius)) : 0
-    backdropOn = !capsules || capsules.backdrop !== false
     capsuleStyles = capsules && Util.isPlainObject(capsules.styles) ? capsules.styles : ({})
     var colors = Util.isPlainObject(config.colors) ? config.colors : null
     var bg = colors ? String(colors.background || "") : ""
@@ -860,6 +888,10 @@ Item {
     var source = BarModel.customModulePath(entry, home, omarchyConfigDir)
     return source ? Util.fileUrl(source) : ""
   }
+
+  // Bundled local widget sources resolve relative to this bar's own directory,
+  // so a self-owned widget never goes through the shell's plugin staging.
+  readonly property string trayWidgetSource: Qt.resolvedUrl("widgets/Tray.qml")
 
   Component.onCompleted: applyBarConfig()
 
@@ -1423,9 +1455,9 @@ Item {
 
         BorderSurface {
           anchors.fill: parent
-          color: root.transparent ? "transparent" : root.background
-          radius: root.pillRadius
-          visible: !root.transparent && root.backdropOn
+          color: root.background
+          radius: root.floatingOn ? root.pillRadius : 0
+          visible: !root.capsulesOn
         }
 
         CenterModules { anchors.fill: parent }
@@ -1452,9 +1484,9 @@ Item {
 
         BorderSurface {
           anchors.fill: parent
-          color: root.transparent ? "transparent" : root.background
-          radius: root.pillRadius
-          visible: !root.transparent && root.backdropOn
+          color: root.background
+          radius: root.floatingOn ? root.pillRadius : 0
+          visible: !root.capsulesOn
         }
 
         CenterModules { anchors.fill: parent }
@@ -1649,6 +1681,10 @@ Item {
     property var entries: root.layoutEntries("center")
     readonly property bool hasAnchor: root.entryIndex(entries, root.centerAnchor) !== -1
     readonly property var anchorEntry: root.findCenterAnchorEntry()
+    // Capsule mode renders the whole center run as one chip. The anchor split
+    // (clock pinned to the screen centre) would carve that run into separate
+    // pills, so it is skipped and the single capsule is anchored as a whole.
+    readonly property bool singleCapsule: root.capsulesOn
 
     Loader {
       anchors.fill: parent
@@ -1668,14 +1704,21 @@ Item {
         }
 
         ModuleList {
-          visible: !centerRoot.hasAnchor
+          visible: centerRoot.singleCapsule
           entries: centerRoot.entries
           region: "center"
           anchors.centerIn: parent
         }
 
         ModuleList {
-          visible: centerRoot.hasAnchor
+          visible: !centerRoot.singleCapsule && !centerRoot.hasAnchor
+          entries: centerRoot.entries
+          region: "center"
+          anchors.centerIn: parent
+        }
+
+        ModuleList {
+          visible: !centerRoot.singleCapsule && centerRoot.hasAnchor
           entries: root.entriesBefore(centerRoot.entries, root.centerAnchor)
           region: "center"
           anchors.right: centerAnchorModule.left
@@ -1684,14 +1727,14 @@ Item {
 
         ModuleSlot {
           id: centerAnchorModule
-          visible: centerRoot.hasAnchor
+          visible: !centerRoot.singleCapsule && centerRoot.hasAnchor
           entry: centerRoot.anchorEntry
           region: "center"
           anchors.centerIn: parent
         }
 
         ModuleList {
-          visible: centerRoot.hasAnchor
+          visible: !centerRoot.singleCapsule && centerRoot.hasAnchor
           entries: root.entriesAfter(centerRoot.entries, root.centerAnchor)
           region: "center"
           anchors.left: centerAnchorModule.right
@@ -1713,14 +1756,21 @@ Item {
         }
 
         ModuleList {
-          visible: !centerRoot.hasAnchor
+          visible: centerRoot.singleCapsule
           entries: centerRoot.entries
           region: "center"
           anchors.centerIn: parent
         }
 
         ModuleList {
-          visible: centerRoot.hasAnchor
+          visible: !centerRoot.singleCapsule && !centerRoot.hasAnchor
+          entries: centerRoot.entries
+          region: "center"
+          anchors.centerIn: parent
+        }
+
+        ModuleList {
+          visible: !centerRoot.singleCapsule && centerRoot.hasAnchor
           entries: root.entriesBefore(centerRoot.entries, root.centerAnchor)
           region: "center"
           anchors.bottom: centerAnchorModule.top
@@ -1729,14 +1779,14 @@ Item {
 
         ModuleSlot {
           id: centerAnchorModule
-          visible: centerRoot.hasAnchor
+          visible: !centerRoot.singleCapsule && centerRoot.hasAnchor
           entry: centerRoot.anchorEntry
           region: "center"
           anchors.centerIn: parent
         }
 
         ModuleList {
-          visible: centerRoot.hasAnchor
+          visible: !centerRoot.singleCapsule && centerRoot.hasAnchor
           entries: root.entriesAfter(centerRoot.entries, root.centerAnchor)
           region: "center"
           anchors.top: centerAnchorModule.bottom
@@ -1893,17 +1943,33 @@ Item {
 
     property var segment
     property string region: ""
-    // With the full backdrop on, only explicit groups render capsules.
-    // With it off (noctalia style) every segment gets its own chip, so
-    // standalone widgets float as independent pills.
+    // Three render modes: capsule mode turns every segment into its own
+    // chip (serpentine style) and hides the full-width slab; with capsules
+    // off the slab is the bar's only background, floating or docked.
     readonly property bool grouped: root.capsulesOn && segment
-      && (root.backdropOn || segment.group !== "")
     readonly property real pad: grouped ? root.pillPadding : 0
+    // A segment whose modules all render zero-size (inactive indicators, an
+    // empty tray, a widget without its service) must not paint an empty chip.
+    readonly property bool hasContent: {
+      var box = content.item
+      if (!box) return false
+      var kids = box.children
+      for (var i = 0; i < kids.length; i++) {
+        var kid = kids[i]
+        if (kid && kid.hasVisibleContent) return true
+      }
+      return false
+    }
+
+    // A chip with nothing in it is invisible: positioners skip it, so the
+    // bar does not show holes where empty segments sit. In slab mode the
+    // full-width background is the segment, so nothing is hidden there.
+    visible: pill.grouped ? (content.item ? pill.hasContent : true) : true
 
     // Painted first so the capsule backdrop stays UNDER the widget content.
     BorderSurface {
       anchors.fill: parent
-      visible: pill.grouped && !root.transparent
+      visible: pill.grouped
       color: root.capsuleColorFor(segment ? segment.group : "")
       radius: root.pillRadius > 0
         ? Math.min(root.pillRadius, Math.min(pill.width, pill.height) / 2)
@@ -1979,16 +2045,22 @@ Item {
     // the binding dependency — the wrapped function call alone wouldn't.
     readonly property var registryComponent: {
       var w = root.barWidgetRegistry.widgets
-      if (customType) return null
+      if (slot.trayLocal || customType) return null
       var registryName = root.canonicalWidgetId(moduleName)
       return w[registryName] ? w[registryName].component : null
     }
+    // The tray ships bundled with this bar and mounts as a local component
+    // instead of a shell-registered plugin widget: plugin widgets get staged
+    // hidden by the shell (their root `visible` is pinned false no matter what
+    // the widget itself does), so a self-owned instance keeps the visibility
+    // logic fully in QML where it belongs.
+    readonly property bool trayLocal: moduleName === "dime.tray"
     readonly property bool qmlCustom: customType === "qml"
     readonly property bool commandCustom: customType === "command"
     readonly property bool registered: registryComponent !== null
     readonly property var activeItem: {
       if (registered) return registryLoader.item
-      if (qmlCustom) return qmlLoader.item
+      if (qmlCustom || trayLocal) return qmlLoader.item
       return componentLoader.item
     }
     readonly property bool hovered: moduleHover.hovered
@@ -2004,8 +2076,30 @@ Item {
       if (hint !== undefined && hint !== null && hint > 0) return Math.round(hint)
       return Math.max(Style.space(10), Math.round((root.vertical ? slot.height : slot.width) * 0.55))
     }
-    implicitWidth: activeItem && activeItem.visible ? (root.vertical ? root.barSize : activeItem.implicitWidth) : 0
-    implicitHeight: activeItem && activeItem.visible ? activeItem.implicitHeight : 0
+    implicitWidth: {
+      var _ = root.moduleShapeRevision
+      return activeItem && (activeItem.implicitWidth > 0 || activeItem.implicitHeight > 0)
+        ? (root.vertical ? root.barSize : activeItem.implicitWidth) : 0
+    }
+    implicitHeight: {
+      var _ = root.moduleShapeRevision
+      return activeItem && (activeItem.implicitWidth > 0 || activeItem.implicitHeight > 0)
+        ? activeItem.implicitHeight : 0
+    }
+    // Whether the module paints anything at all. Capsules stay hidden while
+    // every module in their segment renders zero size (inactive indicators,
+    // an empty system tray, a widget missing its backend).
+    readonly property bool hasVisibleContent: {
+      var _ = root.moduleShapeRevision
+      var it = activeItem
+      return !!it && (it.implicitWidth > 0 || it.implicitHeight > 0)
+    }
+
+    Connections {
+      target: slot.activeItem
+      function onImplicitWidthChanged() { root.moduleShapeRevision = root.moduleShapeRevision + 1 }
+      function onImplicitHeightChanged() { root.moduleShapeRevision = root.moduleShapeRevision + 1 }
+    }
     width: implicitWidth
     height: implicitHeight
     z: modulePointer.dragging ? 100 : 0
@@ -2054,8 +2148,8 @@ Item {
 
     Loader {
       id: qmlLoader
-      active: slot.qmlCustom
-      source: slot.qmlCustom ? root.customModuleSource(slot.entry) : ""
+      active: slot.qmlCustom || slot.trayLocal
+      source: slot.trayLocal ? root.trayWidgetSource : (slot.qmlCustom ? root.customModuleSource(slot.entry) : "")
       anchors.fill: parent
       opacity: slot.dragSource ? 0.22 : 1.0
       onLoaded: {

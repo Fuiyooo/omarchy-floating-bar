@@ -306,16 +306,6 @@ Item {
     barTree.capsules.enabled = on
     return applyBarTree()
   }
-  readonly property bool backdropOn: barTree && Util.isPlainObject(barTree.capsules)
-    ? barTree.capsules.backdrop !== false : true
-
-  function setBackdrop(on) {
-    if (!barTree) return false
-    if (!Util.isPlainObject(barTree.capsules)) barTree.capsules = {}
-    barTree.capsules.backdrop = on
-    return applyBarTree()
-  }
-
   function setCapsuleColor(group, hex) {
     if (!barTree || String(group).length === 0) return false
     if (!Util.isPlainObject(barTree.capsules)) barTree.capsules = {}
@@ -544,7 +534,7 @@ Item {
           Text {
             width: card.implicitWidth - Style.spacing.panelPadding * 2
             wrapMode: Text.Wrap
-            text: "Floating: inset the bar from the screen edges. Capsules: consecutive entries sharing the same group render in one capsule. Entries at the top and bottom of a group are labelled by position."
+            text: "Floating: inset the bar from the screen edges with a full background. Capsules: serpentine look - every widget in its own chip, no full background. Both off: stock Omarchy bar."
             color: root.fgColor
             opacity: 0.75
             font.family: root.fontFamily
@@ -689,7 +679,7 @@ Item {
           Item { width: 1; height: Style.spacing.lg }
 
           Text {
-            text: "CAPSULE items sharing a group render in one capsule; ungrouped widgets float as single capsules when the full bar background is off."
+            text: "CAPSULE: every widget floats in its own chip (Serpentine-style) and the full bar background is dropped. Floating keeps a full rounded background; both off = stock Omarchy bar."
             wrapMode: Text.Wrap
             width: card.implicitWidth - Style.spacing.panelPadding * 2
             color: root.fgColor
