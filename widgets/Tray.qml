@@ -275,29 +275,30 @@ BarWidget {
       id: horizontalTrayRoot
 
       readonly property int pinnedWidth: pinnedRow.implicitWidth
-      readonly property int drawerBlockWidth: root.allItems.length > 0 ? expandIcon.implicitWidth + root.drawerExtent : 0
+      readonly property int drawerBlockWidth: root.allItems.length > 0 ? expandIcon.implicitWidth + root.revealExtent : 0
 
       implicitWidth: pinnedWidth + drawerBlockWidth
       implicitHeight: root.barSize
 
-      // Mask out the empty area the collapsed drawer reserves for its slide-in,
-      // so hovering it doesn't trigger expand and clicks pass through.
-      containmentMask: QtObject {
-        function contains(point: point): bool {
-          if (point.y < 0 || point.y > horizontalTrayRoot.height) return false
-          // Drawer reveals leftward; chevron sits at the right end when collapsed
-          // and slides left as it opens. The visible region starts at the chevron.
-          var chevronX = root.drawerExtent - root.revealExtent
-          if (point.x >= chevronX && point.x <= horizontalTrayRoot.drawerBlockWidth) return true
-          // Pinned items, placed to the right of the drawer block.
-          var pinnedStart = horizontalTrayRoot.drawerBlockWidth
-          return point.x >= pinnedStart && point.x <= horizontalTrayRoot.implicitWidth
+      Row {
+        id: pinnedRow
+        x: 0
+        anchors.verticalCenter: parent.verticalCenter
+        spacing: root.trayItemGap
+        leftPadding: root.pinnedItems.length > 0 && root.allItems.length > 0 ? root.trayJoinGap : 0
+        Repeater {
+          model: root.pinnedItems
+          TrayItem {}
         }
       }
 
+      // Drawer block sits after the pinned items and only occupies its
+      // collapsed (chevron) width until hover pops the tabs out to the right.
+      // Reserving the full drawer extent in the collapsed state used to leave
+      // a wide empty capsule between the chevron and nothing at all.
       Item {
         id: drawerArea
-        x: 0
+        x: pinnedRow.implicitWidth
         width: horizontalTrayRoot.drawerBlockWidth
         height: root.barSize
         visible: root.allItems.length > 0
@@ -311,8 +312,8 @@ BarWidget {
           bar: root.bar
           width: implicitWidth
           height: implicitHeight
-          x: root.drawerExtent - root.revealExtent
-          text: "\uf053"
+          x: 0
+          text: "\uf054"
           onPressed: function(button) {
             if (button === Qt.RightButton) root.managePopupOpen = !root.managePopupOpen
           }
@@ -322,13 +323,13 @@ BarWidget {
           id: trayClip
           x: expandIcon.width
           anchors.verticalCenter: parent.verticalCenter
-          width: root.drawerExtent
+          width: root.revealExtent
           height: root.barSize
           clip: true
 
           Row {
             id: trayIcons
-            x: root.drawerExtent - root.revealExtent
+            x: 0
             anchors.verticalCenter: parent.verticalCenter
             spacing: root.trayItemGap
             layer.enabled: true
@@ -338,18 +339,6 @@ BarWidget {
               TrayItem {}
             }
           }
-        }
-      }
-
-      Row {
-        id: pinnedRow
-        x: drawerArea.x + horizontalTrayRoot.drawerBlockWidth
-        anchors.verticalCenter: parent.verticalCenter
-        spacing: root.trayItemGap
-        leftPadding: root.pinnedItems.length > 0 && root.allItems.length > 0 ? root.trayJoinGap : 0
-        Repeater {
-          model: root.pinnedItems
-          TrayItem {}
         }
       }
     }
@@ -362,24 +351,26 @@ BarWidget {
       id: verticalTrayRoot
 
       readonly property int pinnedHeight: pinnedCol.implicitHeight
-      readonly property int drawerBlockHeight: root.allItems.length > 0 ? expandIcon.implicitHeight + root.drawerExtent : 0
+      readonly property int drawerBlockHeight: root.allItems.length > 0 ? expandIcon.implicitHeight + root.revealExtent : 0
 
       implicitWidth: root.barSize
       implicitHeight: pinnedHeight + drawerBlockHeight
 
-      containmentMask: QtObject {
-        function contains(point: point): bool {
-          if (point.x < 0 || point.x > verticalTrayRoot.width) return false
-          var chevronY = root.drawerExtent - root.revealExtent
-          if (point.y >= chevronY && point.y <= verticalTrayRoot.drawerBlockHeight) return true
-          var pinnedStart = verticalTrayRoot.drawerBlockHeight
-          return point.y >= pinnedStart && point.y <= verticalTrayRoot.implicitHeight
+      Column {
+        id: pinnedCol
+        y: 0
+        anchors.horizontalCenter: parent.horizontalCenter
+        spacing: root.trayItemGap
+        topPadding: root.pinnedItems.length > 0 && root.allItems.length > 0 ? root.trayJoinGap : 0
+        Repeater {
+          model: root.pinnedItems
+          TrayItem {}
         }
       }
 
       Item {
         id: drawerArea
-        y: 0
+        y: pinnedCol.implicitHeight
         width: root.barSize
         height: verticalTrayRoot.drawerBlockHeight
         visible: root.allItems.length > 0
@@ -393,9 +384,8 @@ BarWidget {
           bar: root.bar
           width: implicitWidth
           height: implicitHeight
-          y: root.drawerExtent - root.revealExtent
-          text: "\uf053"
-          textRotation: 90
+          y: 0
+          text: "\uf078"
           onPressed: function(button) {
             if (button === Qt.RightButton) root.managePopupOpen = !root.managePopupOpen
           }
@@ -406,12 +396,12 @@ BarWidget {
           y: expandIcon.height
           anchors.horizontalCenter: parent.horizontalCenter
           width: root.barSize
-          height: root.drawerExtent
+          height: root.revealExtent
           clip: true
 
           Column {
             id: trayIcons
-            y: root.drawerExtent - root.revealExtent
+            y: 0
             anchors.horizontalCenter: parent.horizontalCenter
             spacing: root.trayItemGap
             layer.enabled: true
@@ -421,18 +411,6 @@ BarWidget {
               TrayItem {}
             }
           }
-        }
-      }
-
-      Column {
-        id: pinnedCol
-        y: drawerArea.y + verticalTrayRoot.drawerBlockHeight
-        anchors.horizontalCenter: parent.horizontalCenter
-        spacing: root.trayItemGap
-        topPadding: root.pinnedItems.length > 0 && root.allItems.length > 0 ? root.trayJoinGap : 0
-        Repeater {
-          model: root.pinnedItems
-          TrayItem {}
         }
       }
     }

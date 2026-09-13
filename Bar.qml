@@ -95,7 +95,7 @@ Item {
   // Omarchy bar) no matter whether floating is on; the settings panel raises it.
   property int pillRadius: 0
   readonly property int pillGap: Style.space(4)
-  readonly property int pillPadding: Style.space(9)
+  readonly property int pillPadding: Style.space(6)
   // Feature switches, driven from the `bar:` subtree in shell.json:
   //   floating.gap — pixels inset from the screen edges (0 = docked)
   //   capsules.enabled — group fields render as fully-rounded capsules
