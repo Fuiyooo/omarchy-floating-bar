@@ -897,7 +897,8 @@ Item {
 
   // Revealing the indicators widens their section, which can slide a neighbour
   // under a stationary pointer. Collapsing on that un-hover would move it back
-  // out and re-open the peek, so hold until the pointer leaves the bar.
+  // out and re-open the peek, so hold until the pointer leaves the clock slot
+  // (the center anchor); the widget keeps itself revealed while pointed at.
   function setCenterSectionHovered(hovered) {
     centerSectionHovered = hovered
     if (hovered) {
@@ -919,11 +920,12 @@ Item {
 
   Timer {
     id: centerSectionRevealTimer
-    interval: 120
-    // Collapse only. Opening the peek is the center section's own gesture, done
-    // in setCenterSectionHovered, so a timer left pending by a pointer that dipped
-    // off the bar and came back cannot reveal indicators it never pointed at.
-    onTriggered: if (!root.centerSectionHovered && !root.barHovered) root.centerSectionRevealHeld = false
+    interval: 180
+    // Collapse only. Opening the peek is the center anchor (clock) slot's own
+    // gesture, done in setCenterSectionHovered, so a timer left pending by a
+    // pointer that dipped off and came back cannot reveal indicators it never
+    // pointed at.
+    onTriggered: if (!root.centerSectionHovered) root.centerSectionRevealHeld = false
   }
 
   function run(command) {
@@ -1699,10 +1701,6 @@ Item {
 
         CenterGestureArea { anchors.fill: parent }
 
-        HoverHandler {
-          onHoveredChanged: root.setCenterSectionHovered(hovered)
-        }
-
         ModuleList {
           visible: centerRoot.singleCapsule
           entries: centerRoot.entries
@@ -1750,10 +1748,6 @@ Item {
         anchors.fill: parent
 
         CenterGestureArea { anchors.fill: parent }
-
-        HoverHandler {
-          onHoveredChanged: root.setCenterSectionHovered(hovered)
-        }
 
         ModuleList {
           visible: centerRoot.singleCapsule
@@ -2110,7 +2104,14 @@ Item {
       root.unregisterModuleSlot(slot)
     }
 
-    HoverHandler { id: moduleHover }
+    HoverHandler {
+      id: moduleHover
+
+      onHoveredChanged: {
+        if (root.centerAnchor !== "" && slot.moduleName === root.centerAnchor)
+          root.setCenterSectionHovered(hovered)
+      }
+    }
 
     BorderSurface {
       visible: slot.dragSource

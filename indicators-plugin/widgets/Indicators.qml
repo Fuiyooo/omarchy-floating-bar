@@ -15,11 +15,14 @@ BarWidget {
   property bool indicatorAreaHovered: false
   property bool indicatorItemHovered: false
   readonly property bool alwaysShowIndicators: setting("alwaysShow", false) === true
-  // Inactive indicators extend LEFT of the active block while the centre of
-  // the bar is hovered (the bar's own center-section reveal). Relying on a
-  // precise mouse-over of the widget would collapse the block as soon as the
-  // pointer drifts after a click, which read as the buttons "disappearing".
-  readonly property bool revealInactiveIndicators: alwaysShowIndicators
+  // The whole block extends LEFT of the clock while the centre-anchor (clock)
+  // slot is hovered, and stays while the pointer is on the widget itself.
+  // Relying on a precise mouse-over of the widget for the open gesture would
+  // collapse the block as soon as the pointer drifts after a click, which read
+  // as the buttons "disappearing".
+  readonly property bool indicatorsPeek: alwaysShowIndicators
+    || indicatorAreaHovered
+    || indicatorItemHovered
     || (bar && bar.centerSectionRevealHeld === true && bar.centerHoverRevealSuppressed !== true)
 
   signal refreshRequested()
@@ -164,11 +167,11 @@ BarWidget {
   onIndicatorEntriesChanged: syncActiveIndicatorOrder()
 
   implicitWidth: root.vertical
-    ? Math.max(activeVerticalBlock.implicitWidth, inactiveVerticalArea.implicitWidth)
-    : activeHorizontalBlock.implicitWidth + inactiveHorizontalArea.implicitWidth
+    ? Math.max(activeVerticalArea.implicitWidth, inactiveVerticalArea.implicitWidth)
+    : activeHorizontalArea.implicitWidth + inactiveHorizontalArea.implicitWidth
   implicitHeight: root.vertical
-    ? activeVerticalBlock.implicitHeight + inactiveVerticalArea.implicitHeight
-    : Math.max(activeHorizontalBlock.implicitHeight, inactiveHorizontalArea.implicitHeight)
+    ? activeVerticalArea.implicitHeight + inactiveVerticalArea.implicitHeight
+    : Math.max(activeHorizontalArea.implicitHeight, inactiveHorizontalArea.implicitHeight)
 
   IpcHandler {
     target: "dime.indicators"
@@ -202,7 +205,7 @@ BarWidget {
     Item {
       id: inactiveHorizontalArea
 
-      implicitWidth: root.revealInactiveIndicators ? inactiveHorizontalBlock.implicitWidth : 0
+      implicitWidth: root.indicatorsPeek ? inactiveHorizontalBlock.implicitWidth : 0
       implicitHeight: Math.max(inactiveHorizontalBlock.implicitHeight, root.barSize)
       width: implicitWidth
       height: implicitHeight
@@ -223,12 +226,27 @@ BarWidget {
       }
     }
 
-    ActiveIndicatorBlock {
-      id: activeHorizontalBlock
-      indicatorsModule: root
-      indicatorModel: activeIndicatorModel
-      horizontal: true
-      reportActiveState: !root.vertical
+    Item {
+      id: activeHorizontalArea
+
+      implicitWidth: root.indicatorsPeek ? activeHorizontalBlock.implicitWidth : 0
+      implicitHeight: Math.max(activeHorizontalBlock.implicitHeight, root.barSize)
+      width: implicitWidth
+      height: implicitHeight
+      clip: true
+
+      ActiveIndicatorBlock {
+        id: activeHorizontalBlock
+        anchors.verticalCenter: parent.verticalCenter
+        indicatorsModule: root
+        indicatorModel: activeIndicatorModel
+        horizontal: true
+        reportActiveState: !root.vertical
+      }
+
+      HoverHandler {
+        onHoveredChanged: root.setIndicatorAreaHovered(hovered)
+      }
     }
   }
 
@@ -246,7 +264,7 @@ BarWidget {
       id: inactiveVerticalArea
 
       implicitWidth: Math.max(inactiveVerticalBlock.implicitWidth, root.barSize)
-      implicitHeight: root.revealInactiveIndicators ? inactiveVerticalBlock.implicitHeight : 0
+      implicitHeight: root.indicatorsPeek ? inactiveVerticalBlock.implicitHeight : 0
       width: implicitWidth
       height: implicitHeight
       clip: true
@@ -266,12 +284,27 @@ BarWidget {
       }
     }
 
-    ActiveIndicatorBlock {
-      id: activeVerticalBlock
-      indicatorsModule: root
-      indicatorModel: activeIndicatorModel
-      horizontal: false
-      reportActiveState: root.vertical
+    Item {
+      id: activeVerticalArea
+
+      implicitWidth: Math.max(activeVerticalBlock.implicitWidth, root.barSize)
+      implicitHeight: root.indicatorsPeek ? activeVerticalBlock.implicitHeight : 0
+      width: implicitWidth
+      height: implicitHeight
+      clip: true
+
+      ActiveIndicatorBlock {
+        id: activeVerticalBlock
+        anchors.horizontalCenter: parent.horizontalCenter
+        indicatorsModule: root
+        indicatorModel: activeIndicatorModel
+        horizontal: false
+        reportActiveState: root.vertical
+      }
+
+      HoverHandler {
+        onHoveredChanged: root.setIndicatorAreaHovered(hovered)
+      }
     }
   }
 
