@@ -207,6 +207,10 @@ BarWidget {
       height: implicitHeight
       clip: true
 
+      Behavior on implicitWidth {
+        NumberAnimation { duration: 170; easing.type: Easing.OutCubic }
+      }
+
       IndicatorBlock {
         id: inactiveHorizontalBlock
         anchors.verticalCenter: parent.verticalCenter
@@ -227,6 +231,10 @@ BarWidget {
       height: implicitHeight
       clip: true
 
+      Behavior on implicitWidth {
+        NumberAnimation { duration: 170; easing.type: Easing.OutCubic }
+      }
+
       ActiveIndicatorBlock {
         id: activeHorizontalBlock
         anchors.verticalCenter: parent.verticalCenter
@@ -245,6 +253,10 @@ BarWidget {
       width: implicitWidth
       height: implicitHeight
       clip: true
+
+      Behavior on implicitWidth {
+        NumberAnimation { duration: 170; easing.type: Easing.OutCubic }
+      }
 
       BarIconButton {
         id: collapseChipHorizontal
@@ -270,6 +282,10 @@ BarWidget {
       height: implicitHeight
       clip: true
 
+      Behavior on implicitHeight {
+        NumberAnimation { duration: 170; easing.type: Easing.OutCubic }
+      }
+
       IndicatorBlock {
         id: inactiveVerticalBlock
         anchors.horizontalCenter: parent.horizontalCenter
@@ -290,6 +306,10 @@ BarWidget {
       height: implicitHeight
       clip: true
 
+      Behavior on implicitHeight {
+        NumberAnimation { duration: 170; easing.type: Easing.OutCubic }
+      }
+
       ActiveIndicatorBlock {
         id: activeVerticalBlock
         anchors.horizontalCenter: parent.horizontalCenter
@@ -308,6 +328,10 @@ BarWidget {
       width: implicitWidth
       height: implicitHeight
       clip: true
+
+      Behavior on implicitHeight {
+        NumberAnimation { duration: 170; easing.type: Easing.OutCubic }
+      }
 
       BarIconButton {
         id: collapseChipVertical
