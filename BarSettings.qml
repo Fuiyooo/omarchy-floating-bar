@@ -77,34 +77,6 @@ Item {
     if (idx !== -1) list.splice(idx, 1)
   }
 
-  function allGroups() {
-    var out = []
-    var layout = barTree && Util.isPlainObject(barTree.layout) ? barTree.layout : null
-    if (layout) {
-      for (var i = 0; i < root.sections.length; i++) {
-        var list = Array.isArray(layout[root.sections[i]]) ? layout[root.sections[i]] : []
-        for (var j = 0; j < list.length; j++) {
-          var entry = list[j]
-          var grp = entry && typeof entry.group === "string" ? entry.group : ""
-          if (grp.length > 0 && out.indexOf(grp) === -1) out.push(grp)
-        }
-      }
-    }
-    return out
-  }
-
-  function capsulePreviewColor(groupName, fallback) {
-    var hex = root.committedCapsuleColor(groupName)
-    if (hex !== "") { try { return Qt.color(hex) } catch (e) { } }
-    return fallback
-  }
-
-  function capsuleFill() {
-    var hex = root.committedBarColorField("background")
-    if (hex !== "") { try { return Qt.color(hex) } catch (e) { } }
-    return Color.bar.background
-  }
-
   // Static glyph per widget id, so cards can be identified at a glance
   // without reading names. Unmapped ids fall back to a small square chip.
   function widgetIcon(id) {
@@ -306,44 +278,6 @@ Item {
     barTree.capsules.enabled = on
     return applyBarTree()
   }
-  function setCapsuleColor(group, hex) {
-    if (!barTree || String(group).length === 0) return false
-    if (!Util.isPlainObject(barTree.capsules)) barTree.capsules = {}
-    if (!Util.isPlainObject(barTree.capsules.styles)) barTree.capsules.styles = {}
-    hex = String(hex || "").trim()
-    var styles = barTree.capsules.styles
-    var style = Util.isPlainObject(styles[group]) ? styles[group] : {}
-    if (hex === "") delete style.color
-    else try { Qt.color(style.color = hex) } catch (e) { return false }
-    if (Object.keys(style).length > 0) styles[group] = style
-    else delete styles[group]
-    if (Object.keys(styles).length === 0) delete barTree.capsules.styles
-    return applyBarTree()
-  }
-
-  function committedCapsuleColor(group) {
-    var styles = barTree && Util.isPlainObject(barTree.capsules) && Util.isPlainObject(barTree.capsules.styles)
-      ? barTree.capsules.styles : null
-    var style = styles ? styles[group] : null
-    return style && typeof style.color === "string" ? style.color : ""
-  }
-
-  function setBarColorField(which, hex) {
-    if (!barTree) return false
-    hex = String(hex || "").trim()
-    if (hex !== "") { try { Qt.color(hex) } catch (e) { return false } }
-    if (!Util.isPlainObject(barTree.colors)) barTree.colors = {}
-    if (hex === "") delete barTree.colors[which]
-    else barTree.colors[which] = hex
-    if (Object.keys(barTree.colors).length === 0) delete barTree.colors
-    return applyBarTree()
-  }
-
-  function committedBarColorField(which) {
-    var colors = barTree && Util.isPlainObject(barTree.colors) ? barTree.colors : null
-    return colors && typeof colors[which] === "string" ? colors[which] : ""
-  }
-
 
   function commitGroups() {
     if (!barTree) return false
@@ -449,15 +383,7 @@ Item {
         height: Style.space(8)
         radius: width / 2
         anchors.verticalCenter: parent.verticalCenter
-        color: {
-          if (!root.dragState) return "transparent"
-          var cell = root.dragState.cell
-          var group = cell && cell.entryModel && typeof cell.entryModel.group === "string"
-            ? cell.entryModel.group : ""
-          var hex = root.committedCapsuleColor(group)
-          if (hex !== "") { try { return Qt.color(hex) } catch (e) { } }
-          return root.fgColor
-        }
+        color: root.fgColor
       }
 
       Text {
@@ -637,45 +563,6 @@ Item {
 
           Item { width: 1; height: Style.spacing.sm }
 
-          // ---------- Capsule colour editor (separate from the drag cards)
-          Item { width: 1; height: Style.spacing.xs }
-
-          Text {
-            text: "CAPSULE COLOURS"
-            color: root.fgColor
-            font.family: root.fontFamily
-            font.pixelSize: Style.font.caption
-            font.letterSpacing: 1.5
-            opacity: 0.7
-          }
-
-          Repeater {
-            model: root.allGroups()
-
-            Row {
-              required property string modelData
-              spacing: Style.spacing.sm
-
-              Text {
-                width: 110
-                elide: Text.ElideMiddle
-                maximumLineCount: 1
-                text: modelData
-                color: root.fgColor
-                font.family: root.fontFamily
-                font.pixelSize: Style.font.caption
-                anchors.verticalCenter: parent.verticalCenter
-              }
-
-              ColorFieldRow {
-                property string grp: modelData
-                hexValue: root.committedCapsuleColor(modelData)
-                swatchColor: root.capsulePreviewColor(modelData, root.fgColor)
-                onCommitted: function (hex) { root.setCapsuleColor(modelData, hex) }
-              }
-            }
-          }
-
           Item { width: 1; height: Style.spacing.lg }
 
           Text {
@@ -803,9 +690,7 @@ Item {
       radius: 5
       border.width: entryCell.hovered ? 2 : 1
       border.color: root.fgColor
-      color: entryCell.hasGroup
-        ? Qt.rgba(capsuleFill().r, capsuleFill().g, capsuleFill().b, 0.16)
-        : "transparent"
+      color: "transparent"
 
       Row {
         anchors.verticalCenter: parent.verticalCenter
@@ -856,12 +741,7 @@ Item {
             radius: 3.5
             anchors.verticalCenter: parent.verticalCenter
             visible: entryCell.hasGroup
-            color: {
-              var hex = root.committedCapsuleColor(entryCell.entryModel
-                && typeof entryCell.entryModel.group === "string" ? entryCell.entryModel.group : "")
-              if (hex !== "") { try { return Qt.color(hex) } catch (e) { } }
-              return root.capsuleFill()
-            }
+            color: root.fgColor
           }
         }
 
@@ -938,43 +818,6 @@ Item {
   }
 
 
-  // Hex color row: small current-swatch chip next to a manual text field.
-  // Empty commits restore the theme default for that key.
-  component ColorFieldRow: Row {
-    id: colorRow
-
-    property string hexValue: ""
-    property color swatchColor: "transparent"
-    signal committed(string hex)
-
-    spacing: Style.spacing.xs
-
-    Rectangle {
-      width: Style.font.body
-      height: Style.font.body
-      radius: Math.min(width, height) / 2
-      color: colorRow.swatchColor
-      border.width: 1
-      border.color: root.borderColor
-      anchors.verticalCenter: parent.verticalCenter
-    }
-
-    TextField {
-      id: hexField
-
-      width: 96
-      horizontalPadding: 6
-      verticalPadding: 2
-      font.pixelSize: Style.font.caption
-      placeholderText: "#RRGGBB"
-      onAccepted: colorRow.committed(hexField.text.trim())
-      Component.onCompleted: hexField.text = colorRow.hexValue
-      Connections {
-        target: colorRow
-        function onHexValueChanged() { hexField.text = colorRow.hexValue }
-      }
-    }
-  }
 
   component GroupField: TextField {
     id: gf
